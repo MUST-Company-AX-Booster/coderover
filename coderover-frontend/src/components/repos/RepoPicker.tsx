@@ -43,14 +43,15 @@ export function RepoPicker({ value, onChange, onConnectGitHub, disabled }: RepoP
     staleTime: 60_000,
     retry: (failureCount, err) => {
       // 401 = no connection — don't retry, render CTA instead.
-      const status = (err as any)?.status
+      const status = (err as { status?: number })?.status
       return status !== 401 && failureCount < 1
     },
   })
 
   const repos: GitHubRepo[] = useMemo(() => data?.items ?? [], [data])
+  const typedError = error as { status?: number; message?: string } | undefined
   const is401 =
-    isError && ((error as any)?.status === 401 || /401|no github connection/i.test(String((error as any)?.message ?? "")))
+    isError && (typedError?.status === 401 || /401|no github connection/i.test(String(typedError?.message ?? "")))
 
   if (is401) {
     return (

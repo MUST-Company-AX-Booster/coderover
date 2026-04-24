@@ -28,7 +28,7 @@ export class BackfillMemberships1713000000013 implements MigrationInterface {
     `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
+  public async down(_queryRunner: QueryRunner): Promise<void> {
     // No-op: we don't remove memberships on rollback to avoid losing
     // explicit invitations. Drop the membership table via migration 011.down
     // if a full tear-down is required.

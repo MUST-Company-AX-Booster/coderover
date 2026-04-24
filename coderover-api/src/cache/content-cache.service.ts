@@ -1,10 +1,10 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as crypto from 'crypto';
 import { CacheEntry } from '../entities/cache-entry.entity';
 import { BLOB_STORE, BlobStore, buildBlobPath } from './blob-store';
-import { ArtifactKind, ARTIFACT_KINDS } from './types';
+import { ArtifactKind } from './types';
 
 /**
  * Phase 10 C1 — Single interface for content-addressed cache reads/writes.

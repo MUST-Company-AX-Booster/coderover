@@ -61,12 +61,6 @@ export default function ReposPage() {
   const [editingRepoId, setEditingRepoId] = useState('');
   const [syncingRepos, setSyncingRepos] = useState<Set<string>>(new Set());
 
-  const [newRepo, setNewRepo] = useState({
-    repoUrl: '',
-    label: '',
-    branch: '',
-    githubToken: '',
-  });
   const [editRepo, setEditRepo] = useState({
     label: '',
     branch: '',
@@ -97,27 +91,6 @@ export default function ReposPage() {
       toast.error('Failed to load repositories');
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleAddRepository = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    try {
-      const payload = {
-        repoUrl: newRepo.repoUrl,
-        label: newRepo.label || undefined,
-        branch: newRepo.branch.trim() || undefined,
-        githubToken: newRepo.githubToken.trim() || undefined,
-      };
-      const response = await apiClient.post<RepoApiResponse>('/repos', payload);
-      setRepositories(prev => [...prev, normalizeRepo(response)]);
-      setShowAddModal(false);
-      setNewRepo({ repoUrl: '', label: '', branch: '', githubToken: '' });
-      toast.success('Repository added successfully');
-    } catch (error) {
-      console.error('Failed to add repository:', error);
-      toast.error('Failed to add repository');
     }
   };
 
@@ -502,103 +475,6 @@ export default function ReposPage() {
           if (!o) loadRepositories();
         }}
       />
-
-      {false && showAddModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen px-4">
-            <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => setShowAddModal(false)} />
-            
-            <div className="relative bg-card rounded-lg shadow-xl max-w-md w-full">
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-foreground">Add Repository</h3>
-                  <button
-                    onClick={() => setShowAddModal(false)}
-                    className="p-1 rounded hover:bg-foreground/10"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
-                
-                <form onSubmit={handleAddRepository} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Repository URL
-                    </label>
-                    <input
-                      type="url"
-                      value={newRepo.repoUrl}
-                      onChange={(e) => setNewRepo(prev => ({ ...prev, repoUrl: e.target.value }))}
-                      className="input"
-                      placeholder="https://github.com/owner/repo"
-                      required
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Label
-                    </label>
-                    <input
-                      type="text"
-                      value={newRepo.label}
-                      onChange={(e) => setNewRepo(prev => ({ ...prev, label: e.target.value }))}
-                      className="input"
-                      placeholder="My Repository"
-                      required
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Branch
-                    </label>
-                    <input
-                      type="text"
-                      value={newRepo.branch}
-                      onChange={(e) => setNewRepo(prev => ({ ...prev, branch: e.target.value }))}
-                      className="input"
-                      placeholder="main"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      GitHub Token (optional)
-                    </label>
-                    <input
-                      type="password"
-                      value={newRepo.githubToken}
-                      onChange={(e) => setNewRepo(prev => ({ ...prev, githubToken: e.target.value }))}
-                      className="input"
-                      placeholder="ghp_..."
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Required for private repositories
-                    </p>
-                  </div>
-                  
-                  <div className="flex space-x-3 pt-4">
-                    <button
-                      type="button"
-                      onClick={() => setShowAddModal(false)}
-                      className="flex-1 btn btn-secondary"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="flex-1 btn btn-primary"
-                    >
-                      Add Repository
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {showEditModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">

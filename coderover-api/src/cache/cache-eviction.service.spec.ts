@@ -63,7 +63,7 @@ function makeRepo(initial: Row[] = []) {
       return { affected: n };
     }),
     createQueryBuilder: (_alias: string) => {
-      const state: any = {};
+      const _state: any = {};
       const qb: any = {
         select: (_expr: string, _alias: string) => qb,
         getRawOne: async () => {

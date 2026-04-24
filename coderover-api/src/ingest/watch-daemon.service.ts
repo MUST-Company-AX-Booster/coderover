@@ -331,8 +331,6 @@ export class WatchDaemonService {
       if (prior?.timer) clearTimeout(prior.timer);
       const firstSeenAt = prior?.firstSeenAt ?? now();
 
-      // eslint-disable-next-line prefer-const
-      let timer: NodeJS.Timeout;
       const entry: PendingEntry = {
         action,
         absolutePath,
@@ -341,7 +339,7 @@ export class WatchDaemonService {
         lastSeenAt: now(),
         timer: null,
       };
-      timer = setTimeout(() => {
+      const timer: NodeJS.Timeout = setTimeout(() => {
         void flushPath(relativePath);
       }, debounceMs);
       // `.unref()` keeps Node's event loop free to exit on SIGINT.

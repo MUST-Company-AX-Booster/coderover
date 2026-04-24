@@ -1,0 +1,44 @@
+{
+  "name": "coderover-mcp",
+  "displayName": "CodeRover",
+  "description": "CodeRover — search, chat, and PR review inside VS Code",
+  "version": "0.1.0",
+  "publisher": "coderover",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other",
+    "Machine Learning"
+  ],
+  "activationEvents": [
+    "onCommand:coderover.search",
+    "onCommand:coderover.chat",
+    "onCommand:coderover.reviewPr",
+    "onCommand:coderover.setApiToken"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "coderover.search",       "title": "CodeRover: Search Codebase" },
+      { "command": "coderover.chat",         "title": "CodeRover: Chat" },
+      { "command": "coderover.reviewPr",     "title": "CodeRover: Review Current PR" },
+      { "command": "coderover.setApiToken",  "title": "CodeRover: Set API Token" }
+    ],
+    "menus": {
+      "editor/context": [
+        { "command": "coderover.search", "group": "navigation" }
+      ]
+    },
+    "configuration": {
+      "title": "CodeRover",
+      "properties": {
+        "coderover.apiBaseUrl": {
+          "type": "string",
+          "default": "http://localhost:3001",
+          "description": "Base URL of the CodeRover API"
+        }
+      }
+    }
+  }
+}

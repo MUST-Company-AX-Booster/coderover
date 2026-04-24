@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: coderover
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - '5434:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6380:6379'
+
+  memgraph:
+    image: memgraph/memgraph-mage:latest
+    ports:
+      - '7687:7687'
+      - '7444:7444' # Memgraph Lab
+    command: ["--log-level=TRACE"]
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      PORT: ${PORT:-3001}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MEMGRAPH_URI: ${MEMGRAPH_URI:-bolt://memgraph:7687}
+    ports:
+      - '${PORT:-3001}:${PORT:-3001}'
+    depends_on:
+      - postgres
+      - redis
+      - memgraph
+
+volumes:
+  pgdata:

@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Force brand accent on native form controls (checkbox, radio, progress,
+ * range). Without this the browser defaults to system blue — QA-003. */
+input[type="checkbox"],
+input[type="radio"],
+progress,
+input[type="range"] {
+  accent-color: rgb(var(--color-accent));
+}
+
+/* ── BOKEH display font — wordmark-only, self-hosted.
+   `font-display: block` so the wordmark never flashes a fallback glyph.
+   Kept local (not Google Fonts) because BOKEH is a dafont font not in the CDN. */
+@font-face {
+  font-family: "Bokeh";
+  src: url("./assets/fonts/BOKEH.otf") format("opentype"),
+       url("./assets/fonts/BOKEH.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}

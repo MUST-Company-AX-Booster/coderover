@@ -1,0 +1,9 @@
+{
+  "mcp": {
+    "servers": {
+      "coderover": {
+        "url": "http://localhost:3001/mcp"
+      }
+    }
+  }
+}

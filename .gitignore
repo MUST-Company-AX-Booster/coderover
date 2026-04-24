@@ -1,0 +1,62 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+build/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+# env backups — never commit (may contain rotated secrets)
+.env.bak*
+*.env.bak
+
+# Logs
+*.log
+logs/
+server.err
+server.out
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test + coverage
+coverage/
+.nyc_output/
+*.lcov
+playwright-report/
+test-results/
+
+# Cache
+.cache/
+.parcel-cache/
+.turbo/
+.vite/
+.eslintcache
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Worktrees + agent artifacts
+.worktrees/
+.gstack/
+.claude/
+.trae/
+.cursor/
+.continue/
+.aider*

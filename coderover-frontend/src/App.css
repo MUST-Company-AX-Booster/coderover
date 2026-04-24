@@ -1,0 +1,384 @@
+/* CodeRover Design System — Mission Control Brutalism
+   ----------------------------------------------------------------------
+   Source of truth: DESIGN.md at repo root.
+   RGB channel CSS variables; Tailwind v3 wraps them with `rgb(var(...) / <alpha>)`.
+
+   Wave 1 swaps VALUES only. Token names (primary/secondary/success/error/
+   warning/info scales) are preserved so existing consumers don't break.
+   Wave 4 removes the deprecated warning/info scales during the page-by-page
+   reskin. Until then, warning remaps to a muted amber-coral and info remaps
+   to silver — both visually on-brand.
+*/
+
+:root,
+[data-theme="dark"] {
+  /* ── Primary — Bone/Ink ramp (neutrals carry primary in this brand) ── */
+  --color-primary-50:  250 249 245;
+  --color-primary-100: 246 245 240;
+  --color-primary-200: 237 235 229;   /* bone */
+  --color-primary-300: 225 222 214;
+  --color-primary-400: 216 214 207;   /* ink */
+  --color-primary-500: 237 235 229;   /* BONE — primary default */
+  --color-primary-600: 216 214 207;
+  --color-primary-700: 180 179 173;
+  --color-primary-800: 140 140 135;   /* silver */
+  --color-primary-900:  90  89  85;
+  --color-primary-950:  40  40  38;
+
+  /* ── Secondary — Graphite/Void ramp (surfaces & deep neutrals) ── */
+  --color-secondary-50:  247 245 239;
+  --color-secondary-100: 237 235 229;
+  --color-secondary-200: 200 199 194;
+  --color-secondary-300: 140 140 135;   /* silver */
+  --color-secondary-400:  80  80  78;
+  --color-secondary-500:  40  40  38;
+  --color-secondary-600:  26  26  26;   /* graphite */
+  --color-secondary-700:  20  20  20;
+  --color-secondary-800:  15  15  15;
+  --color-secondary-900:  10  10  10;   /* void */
+  --color-secondary-950:   5   5   5;   /* black */
+
+  /* ── Success — Muted green #9FE0B4 (brand accent) ── */
+  --color-success-50:  235 248 240;
+  --color-success-100: 215 240 225;
+  --color-success-200: 190 232 205;
+  --color-success-300: 175 225 195;
+  --color-success-400: 159 224 180;
+  --color-success-500: 159 224 180;   /* ACCENT — #9FE0B4 */
+  --color-success-600: 125 190 148;
+  --color-success-700:  95 160 118;
+  --color-success-800:  68 120  88;
+  --color-success-900:  45  85  60;
+  --color-success-950:  22  45  30;
+
+  /* ── Error — Muted coral #E89D9D (brand destructive) ── */
+  --color-error-50:  250 234 234;
+  --color-error-100: 246 215 215;
+  --color-error-200: 241 195 195;
+  --color-error-300: 236 175 175;
+  --color-error-400: 232 157 157;
+  --color-error-500: 232 157 157;   /* DESTRUCTIVE — #E89D9D */
+  --color-error-600: 200 125 125;
+  --color-error-700: 165  95  95;
+  --color-error-800: 125  68  68;
+  --color-error-900:  85  45  45;
+  --color-error-950:  45  22  22;
+
+  /* ── Warning — DEPRECATED (removed in Wave 4).
+     Remapped to a muted amber-coral so existing .bg-warning / .alert-warning
+     usages degrade gracefully until migration. ── */
+  --color-warning-50:  250 242 230;
+  --color-warning-100: 245 230 200;
+  --color-warning-200: 238 215 170;
+  --color-warning-300: 228 195 140;
+  --color-warning-400: 215 175 115;
+  --color-warning-500: 205 160 100;
+  --color-warning-600: 175 130  80;
+  --color-warning-700: 140 100  60;
+  --color-warning-800: 105  75  45;
+  --color-warning-900:  70  50  30;
+  --color-warning-950:  35  25  15;
+
+  /* ── Info — DEPRECATED (removed in Wave 4).
+     Remapped to silver so .badge-info / .alert-info read as neutral metadata. ── */
+  --color-info-50:  237 235 229;
+  --color-info-100: 216 214 207;
+  --color-info-200: 200 199 194;
+  --color-info-300: 180 179 173;
+  --color-info-400: 160 159 153;
+  --color-info-500: 140 140 135;   /* silver */
+  --color-info-600: 120 120 115;
+  --color-info-700:  90  89  85;
+  --color-info-800:  60  60  58;
+  --color-info-900:  40  40  38;
+  --color-info-950:  20  20  20;
+
+  /* ── Brand neutrals — direct-access tokens (use in Wave 2 primitives) ── */
+  --color-void:      10 10 10;       /* #0A0A0A — default app background */
+  --color-black:      5  5  5;       /* #050505 — deepest surfaces */
+  --color-graphite:  26 26 26;       /* #1A1A1A — cards, panels */
+  --color-bone:     237 235 229;     /* #EDEBE5 — primary foreground */
+  --color-ink:      216 214 207;     /* #D8D6CF — secondary text */
+  --color-silver:   140 140 135;     /* #8C8C87 — metadata */
+
+  /* ── Semantic tokens — dark (default brand mode) ── */
+  --color-background:          10  10  10;      /* void */
+  --color-foreground:         237 235 229;      /* bone */
+  --color-card:                26  26  26;      /* graphite */
+  --color-card-foreground:    237 235 229;
+  --color-popover:             26  26  26;
+  --color-popover-foreground: 237 235 229;
+
+  --color-primary-foreground:  10  10  10;      /* void on bone */
+  --color-secondary-foreground: 216 214 207;    /* ink */
+
+  --color-muted:               20  20  20;
+  --color-muted-foreground:   140 140 135;      /* silver */
+
+  --color-accent:             159 224 180;      /* muted green */
+  --color-accent-foreground:   10  10  10;
+
+  --color-destructive:        232 157 157;      /* muted coral */
+  --color-destructive-foreground: 10 10 10;
+
+  /* Borders — pre-baked bone-at-10%-over-void ≈ rgb(33 32 32) */
+  --color-border: 33 32 32;
+  --color-input:  33 32 32;
+  --color-ring:  159 224 180;                   /* accent green focus */
+}
+
+/* ── Light mode — inverted bone/ink/graphite.
+   Admin users who need high-ambient-light legibility. Scanlines hidden. ── */
+[data-theme="light"] {
+  --color-primary-50:  247 245 239;
+  --color-primary-100: 237 235 229;
+  --color-primary-200: 216 214 207;
+  --color-primary-300: 180 179 173;
+  --color-primary-400: 140 140 135;
+  --color-primary-500:  40  40  38;
+  --color-primary-600:  26  26  26;
+  --color-primary-700:  15  15  15;
+  --color-primary-800:  10  10  10;
+  --color-primary-900:   5   5   5;
+  --color-primary-950:   0   0   0;
+
+  --color-secondary-50:  10  10  10;
+  --color-secondary-100: 26  26  26;
+  --color-secondary-200: 40  40  38;
+  --color-secondary-300: 80  80  78;
+  --color-secondary-400: 107 107 102;
+  --color-secondary-500: 140 140 135;
+  --color-secondary-600: 180 179 173;
+  --color-secondary-700: 200 199 194;
+  --color-secondary-800: 216 214 207;
+  --color-secondary-900: 237 235 229;
+  --color-secondary-950: 247 245 239;
+
+  --color-background:          247 245 239;     /* paper */
+  --color-foreground:           10  10  10;     /* near-black */
+  --color-card:                237 235 229;     /* bone */
+  --color-card-foreground:      10  10  10;
+  --color-popover:             237 235 229;
+  --color-popover-foreground:   10  10  10;
+
+  --color-primary-foreground:  247 245 239;
+  --color-secondary-foreground: 40  40  38;
+
+  --color-muted:               230 228 222;
+  --color-muted-foreground:    107 107 102;
+
+  /* Accent + destructive unchanged — read correctly in both modes */
+
+  /* Borders — pre-baked void-at-12%-over-paper ≈ rgb(220 218 212) */
+  --color-border: 220 218 212;
+  --color-input:  220 218 212;
+  --color-ring:   159 224 180;
+}
+
+/* ────────────────────────────────────────────────────────────
+   BASE STYLES
+   ──────────────────────────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-feature-settings: 'cv11', 'ss01';
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: 0.005em;
+}
+
+body {
+  background-color: rgb(var(--color-background));
+  color: rgb(var(--color-foreground));
+  transition: background-color 300ms ease, color 300ms ease;
+}
+
+/* ────────────────────────────────────────────────────────────
+   SCANLINE OVERLAY — Mission Control atmosphere
+   Fixed overlay at 50% opacity in app (vs 100% on marketing).
+   Disabled in light mode; fights paper legibility.
+   ──────────────────────────────────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 90;
+  opacity: 0.5;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.12) 3px,
+    rgba(0, 0, 0, 0.12) 4px
+  );
+  mix-blend-mode: multiply;
+}
+
+[data-theme="light"] body::before {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before { opacity: 0.25; }
+}
+
+/* ────────────────────────────────────────────────────────────
+   SCROLLBAR
+   ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgb(var(--color-muted-foreground) / 0.5); border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--color-muted-foreground)); }
+
+/* ────────────────────────────────────────────────────────────
+   LEGACY COMPONENT CLASSES — preserved for Wave 1 backward compat.
+   Visuals stay as-is; colors inherit from the new CSS variables above.
+   Wave 4 migrates pages to Tailwind utilities + brand primitives and
+   removes this block.
+   ──────────────────────────────────────────────────────────── */
+.card {
+  background-color: rgb(var(--color-card));
+  color: rgb(var(--color-card-foreground));
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  transition: box-shadow 200ms ease;
+}
+.card:hover { box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 0.5rem; min-height: 2.25rem; padding: 0.5rem 1rem;
+  font-size: 0.875rem; font-weight: 500; line-height: 1.25;
+  border: 1px solid transparent; border-radius: 0.375rem;
+  cursor: pointer; transition: all 150ms ease; text-decoration: none; user-select: none;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+.btn-primary { background-color: rgb(var(--color-primary-500)); color: rgb(var(--color-primary-foreground)); }
+.btn-primary:hover:not(:disabled) { background-color: rgb(var(--color-primary-600)); }
+.btn-secondary { background-color: rgb(var(--color-muted)); color: rgb(var(--color-muted-foreground)); }
+.btn-secondary:hover:not(:disabled) { background-color: rgb(var(--color-secondary-200)); }
+.btn-outline { background-color: transparent; color: rgb(var(--color-foreground)); border-color: rgb(var(--color-border)); }
+.btn-outline:hover:not(:disabled) { background-color: rgb(var(--color-accent)); }
+.btn-ghost { background-color: transparent; color: rgb(var(--color-foreground)); }
+.btn-ghost:hover:not(:disabled) { background-color: rgb(var(--color-accent)); }
+
+.input, .select, .textarea {
+  width: 100%; padding: 0.5rem 0.75rem; font-size: 0.875rem; line-height: 1.5;
+  background-color: rgb(var(--color-background));
+  border: 1px solid rgb(var(--color-border)); border-radius: 0.375rem;
+  color: rgb(var(--color-foreground)); transition: border-color 150ms ease;
+}
+.input:focus, .select:focus, .textarea:focus {
+  outline: none; border-color: rgb(var(--color-ring));
+  box-shadow: 0 0 0 2px rgb(var(--color-ring) / 0.2);
+}
+
+.badge { display: inline-flex; align-items: center; padding: 0.125rem 0.5rem; font-size: 0.75rem; font-weight: 500; border-radius: 9999px; }
+.badge-success { background-color: rgb(var(--color-success-100)); color: rgb(var(--color-success-800)); }
+.badge-warning { background-color: rgb(var(--color-warning-100)); color: rgb(var(--color-warning-800)); }
+.badge-error { background-color: rgb(var(--color-error-100)); color: rgb(var(--color-error-800)); }
+.badge-info { background-color: rgb(var(--color-info-100)); color: rgb(var(--color-info-800)); }
+
+.alert { padding: 1rem; border-radius: 0.5rem; border: 1px solid transparent; }
+.alert-success { background-color: rgb(var(--color-success-50)); border-color: rgb(var(--color-success-200)); color: rgb(var(--color-success-800)); }
+.alert-warning { background-color: rgb(var(--color-warning-50)); border-color: rgb(var(--color-warning-200)); color: rgb(var(--color-warning-800)); }
+.alert-error { background-color: rgb(var(--color-error-50)); border-color: rgb(var(--color-error-200)); color: rgb(var(--color-error-800)); }
+.alert-info { background-color: rgb(var(--color-info-50)); border-color: rgb(var(--color-info-200)); color: rgb(var(--color-info-800)); }
+
+.skeleton {
+  background-color: rgb(var(--color-muted)); border-radius: 0.375rem;
+  position: relative; overflow: hidden;
+}
+.skeleton::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(var(--color-background) / 0.4), transparent);
+  animation: shimmer 2s infinite;
+}
+@keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+.code-block {
+  background-color: rgb(var(--color-graphite));
+  color: rgb(var(--color-foreground));
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  border-radius: 0;
+  padding: 1rem; overflow-x: auto;
+  font-size: 0.875rem; line-height: 1.75;
+  border: 1px solid rgb(var(--color-border));
+}
+
+/* ────────────────────────────────────────────────────────────
+   React Flow (@xyflow/react) — Orbital Map theming.
+   Pull the library's default palette into the brand neutrals.
+   ──────────────────────────────────────────────────────────── */
+.react-flow {
+  background-color: rgb(var(--color-background));
+}
+/* Higher specificity + !important to win over React Flow's built-in
+ * node-default styles (which set background:#fff inline/at lower specificity). */
+.react-flow__node,
+.react-flow__node.react-flow__node-default,
+.react-flow__node.react-flow__node-input,
+.react-flow__node.react-flow__node-output,
+.react-flow__node.react-flow__node-group {
+  background-color: rgb(var(--color-graphite)) !important;
+  color: rgb(var(--color-foreground)) !important;
+  border: 1px solid rgb(var(--color-border)) !important;
+  border-radius: 0 !important;
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  box-shadow: none !important;
+}
+.react-flow__node.selected,
+.react-flow__node:hover {
+  border-color: rgb(var(--color-accent)) !important;
+  color: rgb(var(--color-foreground)) !important;
+}
+.react-flow__edge-path {
+  stroke: rgb(var(--color-silver));
+  stroke-width: 1;
+}
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: rgb(var(--color-accent));
+  stroke-width: 1.5;
+}
+.react-flow__controls {
+  background-color: rgb(var(--color-graphite));
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 0;
+  box-shadow: none;
+}
+.react-flow__controls-button {
+  background: transparent;
+  color: rgb(var(--color-foreground));
+  border-bottom: 1px solid rgb(var(--color-border));
+}
+.react-flow__controls-button:hover {
+  background-color: rgb(var(--color-foreground) / 0.05);
+}
+.react-flow__minimap {
+  background-color: rgb(var(--color-graphite));
+  border: 1px solid rgb(var(--color-border));
+}
+.react-flow__attribution {
+  background: transparent;
+  color: rgb(var(--color-muted-foreground));
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+@media print {
+  .no-print { display: none !important; }
+  body::before { display: none !important; }
+}

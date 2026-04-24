@@ -1,0 +1,20 @@
+User-agent: *
+Allow: /
+Disallow: /login
+Disallow: /register
+Disallow: /auth/
+Disallow: /dashboard
+Disallow: /chat
+Disallow: /repos
+Disallow: /graph
+Disallow: /agents
+Disallow: /analytics
+Disallow: /health
+Disallow: /artifacts
+Disallow: /pr-reviews
+Disallow: /operations
+Disallow: /settings
+Disallow: /orgs
+Disallow: /search
+
+Sitemap: https://coderover.must.company/sitemap.xml

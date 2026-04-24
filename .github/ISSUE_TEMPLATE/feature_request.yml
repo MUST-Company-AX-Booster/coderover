@@ -1,0 +1,64 @@
+name: Feature request
+description: Propose new functionality or a change to existing behavior.
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing a feature. For big changes, please open an issue
+        and get alignment before writing a PR — we'd rather discuss approach
+        early than ask you to rework a large diff.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component most affected
+      options:
+        - coderover-api (NestJS backend)
+        - coderover-frontend (React SPA)
+        - packages/mcp (MCP client / installer)
+        - packages/mcp-offline (offline embeddings)
+        - VS Code extension
+        - Landing page
+        - Docs / runbook
+        - Cross-cutting (architecture, build, CI)
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that CodeRover doesn't currently let you do? Be concrete — describe the situation, not the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: How would you like it to work? Happy path, main surface area, and any API / CLI / config shape.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else did you think about? What tradeoffs are you making?
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Rough sense of size — config flag, new endpoint, new service, new package?
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks before submitting
+      options:
+        - label: I searched existing issues and roadmap and this isn't already tracked.
+          required: true
+        - label: I'm willing to discuss the proposal before opening a PR.
+          required: true

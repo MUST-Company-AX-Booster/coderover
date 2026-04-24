@@ -1,0 +1,90 @@
+name: Bug report
+description: Something CodeRover does that it shouldn't, or doesn't do that it should.
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. A few ground rules:
+
+        - **Do not file security vulnerabilities here.** Follow [SECURITY.md](../../SECURITY.md) instead.
+        - **Search existing issues first** — your bug may already be tracked.
+        - **Include enough detail to reproduce.** Bugs without a repro will likely be closed.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Where is the bug?
+      options:
+        - coderover-api (NestJS backend)
+        - coderover-frontend (React SPA)
+        - packages/mcp (MCP client / installer)
+        - packages/mcp-offline (offline embeddings)
+        - VS Code extension
+        - Landing page
+        - Docs / README / Runbook
+        - Other / unsure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Contents of `VERSION` file at the repo root, or the `@coderover/mcp` npm version, or the commit SHA.
+      placeholder: "0.12.1 / @coderover/mcp@0.3.1 / commit abc1234"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug. What did you do, what did you expect, what did you see instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps so a maintainer can trigger the bug.
+      placeholder: |
+        1. `npm install ...`
+        2. Run `coderover ...`
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or error output
+      description: |
+        Paste stack traces, server logs, or browser console output. **Redact any tokens, user emails, or private codebase paths before posting.**
+      render: shell
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node version, Docker version, browser (if frontend), LLM provider used.
+      placeholder: |
+        - OS: macOS 14.5 (arm64)
+        - Node: v20.11.1
+        - Docker: 25.0.3
+        - Browser: Chrome 124
+        - LLM_PROVIDER: openai
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: I redacted secrets, tokens, and private codebase paths from logs.
+          required: true
+        - label: This is a bug report, not a security vulnerability (security goes to SECURITY.md).
+          required: true

@@ -1,0 +1,78 @@
+{
+  "name": "@coderover/mcp",
+  "version": "0.4.0",
+  "description": "MCP server and installer for CodeRover graph-aware code search.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MUST-Company-AX-Booster/coderover.git",
+    "directory": "packages/mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/MUST-Company-AX-Booster/coderover/issues"
+  },
+  "homepage": "https://github.com/MUST-Company-AX-Booster/coderover/tree/main/packages/mcp#readme",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "coderover",
+    "code-search",
+    "graph-rag",
+    "claude",
+    "cursor",
+    "aider"
+  ],
+  "bin": {
+    "coderover": "bin/coderover-mcp.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "bin",
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "start": "node bin/coderover-mcp.js",
+    "test": "jest",
+    "test:ts": "TS_REAL=1 bash -c 'for f in test/local/ingest/chunker.spec.ts test/local/ingest/symbol-extractor.spec.ts test/local/ingest/import-extractor.spec.ts test/local/ingest/tree-sitter-walker.spec.ts test/local/ingest/grammar-loader.spec.ts test/local/ingest/e2e-corpus.spec.ts test/local/ingest/python-extractor.spec.ts test/local/ingest/go-extractor.spec.ts test/local/ingest/java-extractor.spec.ts test/local/pipeline.spec.ts test/local/watch/watch-daemon.spec.ts test/cli/local/index-cmd.spec.ts test/cli/local/reindex-cmd.spec.ts test/cli/local/watch-cmd.spec.ts; do node_modules/.bin/jest $f || exit 1; done'",
+    "typecheck": "tsc --noEmit",
+    "smoke:pack": "bash scripts/prepublish-smoke.sh",
+    "prepublishOnly": "npm run build && npm test && npm run smoke:pack",
+    "bench:index-10k": "ts-node benchmarks/index-10k.bench.ts",
+    "bench:query-p95": "ts-node benchmarks/query-p95.bench.ts",
+    "bench:reingest": "ts-node benchmarks/reingest-1-file.bench.ts",
+    "bench:recall": "ts-node benchmarks/recall.bench.ts",
+    "bench": "npm run bench:index-10k && npm run bench:query-p95 && npm run bench:reingest"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.0.0",
+    "jest": "^29.5.0",
+    "ts-jest": "^29.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  },
+  "dependencies": {
+    "@parcel/watcher": "^2.5.6",
+    "better-sqlite3": "^11.7.0",
+    "ignore": "^5.3.0",
+    "sqlite-vec": "0.1.6",
+    "tree-sitter": "^0.21.1",
+    "tree-sitter-go": "^0.21.2",
+    "tree-sitter-java": "^0.21.0",
+    "tree-sitter-javascript": "^0.21.4",
+    "tree-sitter-python": "^0.21.0"
+  }
+}

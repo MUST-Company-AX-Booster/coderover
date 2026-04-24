@@ -1,0 +1,7 @@
+{
+  "name": "test-coverage",
+  "version": "0.1.0",
+  "type": "mcp-tool",
+  "entry": "index.js",
+  "permissions": []
+}

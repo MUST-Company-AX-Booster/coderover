@@ -4,10 +4,15 @@
 #   - Weekly cadence (Monday morning, GMT+5) so updates batch instead of
 #     drip-firing throughout the week.
 #   - Patch + minor updates GROUPED into a single PR per ecosystem so a
-#     normal week is at most ~6 PRs total instead of dozens.
-#   - Major updates on framework / build-tooling packages IGNORED so they
-#     can be reviewed and bumped intentionally rather than auto-filed.
-#     (Major bumps on application-level deps still arrive individually.)
+#     normal week is at most ~7 PRs total (one per ecosystem) instead of
+#     dozens of individual ones.
+#   - ALL MAJOR BUMPS IGNORED. Major version updates require manual
+#     review (compatibility, migration cost, Node version matrix, etc.)
+#     and the cost of an auto-filed major-bump PR is almost always
+#     higher than the value. They surface on the Dependabot
+#     "available updates" page instead:
+#       https://github.com/MUST-Company-AX-Booster/coderover/network/updates
+#     Filing a major bump PR is a one-line manual action when ready.
 #
 # Reference: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 
@@ -28,17 +33,7 @@ updates:
           - patch
           - minor
     ignore:
-      - dependency-name: "@nestjs/*"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "typeorm"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "pg"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "redis"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "ioredis"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "neo4j-driver"
+      - dependency-name: "*"
         update-types: ["version-update:semver-major"]
     labels:
       - dependencies
@@ -59,23 +54,7 @@ updates:
           - patch
           - minor
     ignore:
-      - dependency-name: "react"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "react-dom"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "react-router-dom"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "vite"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@vitejs/*"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "vitest"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "tailwindcss"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@tanstack/react-query"
+      - dependency-name: "*"
         update-types: ["version-update:semver-major"]
     labels:
       - dependencies
@@ -96,13 +75,7 @@ updates:
           - patch
           - minor
     ignore:
-      - dependency-name: "@modelcontextprotocol/sdk"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "tree-sitter*"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "better-sqlite3"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "sqlite-vec"
+      - dependency-name: "*"
         update-types: ["version-update:semver-major"]
     labels:
       - dependencies
@@ -123,9 +96,7 @@ updates:
           - patch
           - minor
     ignore:
-      - dependency-name: "@nestjs/*"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "typeorm"
+      - dependency-name: "*"
         update-types: ["version-update:semver-major"]
     labels:
       - dependencies
@@ -146,7 +117,7 @@ updates:
           - patch
           - minor
     ignore:
-      - dependency-name: "@xenova/transformers"
+      - dependency-name: "*"
         update-types: ["version-update:semver-major"]
     labels:
       - dependencies
@@ -166,6 +137,9 @@ updates:
         update-types:
           - patch
           - minor
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     labels:
       - dependencies
       - area:ci
@@ -179,6 +153,9 @@ updates:
       time: "06:00"
       timezone: Asia/Karachi
     open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     labels:
       - dependencies
       - area:docker

@@ -1,0 +1,184 @@
+# Dependabot configuration.
+#
+# Strategy:
+#   - Weekly cadence (Monday morning, GMT+5) so updates batch instead of
+#     drip-firing throughout the week.
+#   - Patch + minor updates GROUPED into a single PR per ecosystem so a
+#     normal week is at most ~6 PRs total instead of dozens.
+#   - Major updates on framework / build-tooling packages IGNORED so they
+#     can be reviewed and bumped intentionally rather than auto-filed.
+#     (Major bumps on application-level deps still arrive individually.)
+#
+# Reference: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # ── coderover-api (NestJS backend) ────────────────────────────
+  - package-ecosystem: npm
+    directory: /coderover-api
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Karachi
+    open-pull-requests-limit: 5
+    groups:
+      api-patch-and-minor:
+        update-types:
+          - patch
+          - minor
+    ignore:
+      - dependency-name: "@nestjs/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typeorm"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "pg"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "redis"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "ioredis"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "neo4j-driver"
+        update-types: ["version-update:semver-major"]
+    labels:
+      - dependencies
+      - area:api
+
+  # ── coderover-frontend (React + Vite) ─────────────────────────
+  - package-ecosystem: npm
+    directory: /coderover-frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Karachi
+    open-pull-requests-limit: 5
+    groups:
+      frontend-patch-and-minor:
+        update-types:
+          - patch
+          - minor
+    ignore:
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-router-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitejs/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@tanstack/react-query"
+        update-types: ["version-update:semver-major"]
+    labels:
+      - dependencies
+      - area:frontend
+
+  # ── packages/mcp (npm-published @coderover/mcp) ───────────────
+  - package-ecosystem: npm
+    directory: /packages/mcp
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Karachi
+    open-pull-requests-limit: 5
+    groups:
+      mcp-patch-and-minor:
+        update-types:
+          - patch
+          - minor
+    ignore:
+      - dependency-name: "@modelcontextprotocol/sdk"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "tree-sitter*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "better-sqlite3"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "sqlite-vec"
+        update-types: ["version-update:semver-major"]
+    labels:
+      - dependencies
+      - area:mcp
+
+  # ── packages/mcp-integration (test harness) ───────────────────
+  - package-ecosystem: npm
+    directory: /packages/mcp-integration
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Karachi
+    open-pull-requests-limit: 5
+    groups:
+      mcp-integration-patch-and-minor:
+        update-types:
+          - patch
+          - minor
+    ignore:
+      - dependency-name: "@nestjs/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typeorm"
+        update-types: ["version-update:semver-major"]
+    labels:
+      - dependencies
+      - area:mcp
+
+  # ── packages/mcp-offline (offline embedder) ───────────────────
+  - package-ecosystem: npm
+    directory: /packages/mcp-offline
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Karachi
+    open-pull-requests-limit: 5
+    groups:
+      mcp-offline-patch-and-minor:
+        update-types:
+          - patch
+          - minor
+    ignore:
+      - dependency-name: "@xenova/transformers"
+        update-types: ["version-update:semver-major"]
+    labels:
+      - dependencies
+      - area:mcp
+
+  # ── GitHub Actions workflows ──────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Karachi
+    open-pull-requests-limit: 3
+    groups:
+      actions-patch-and-minor:
+        update-types:
+          - patch
+          - minor
+    labels:
+      - dependencies
+      - area:ci
+
+  # ── Docker (coderover-api Dockerfile) ─────────────────────────
+  - package-ecosystem: docker
+    directory: /coderover-api
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Karachi
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - area:docker

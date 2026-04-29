@@ -32,6 +32,7 @@ import { openDb } from '../../local/db/open';
 import { migrate } from '../../local/db/migrator';
 import { migration001Initial } from '../../local/db/migrations/001_initial';
 import { makeSqliteVecMigration } from '../../local/db/migrations/002_sqlite_vec';
+import { migration003CallEdges } from '../../local/db/migrations/003_call_edges';
 import { loadSqliteVec } from '../../local/db/sqlite-vec';
 
 import type { Embedder } from '../../local/embed/types';
@@ -222,7 +223,11 @@ export async function openIndexedDb(
     );
   }
 
-  await migrate(db, [migration001Initial, makeSqliteVecMigration(dim)]);
+  await migrate(db, [
+    migration001Initial,
+    makeSqliteVecMigration(dim),
+    migration003CallEdges,
+  ]);
   // The migration runs loadSqliteVec once, but better-sqlite3 requires
   // re-loading per connection. Our migrate + openDb use the same
   // connection so this is technically a no-op — keep it explicit for

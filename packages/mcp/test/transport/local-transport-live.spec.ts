@@ -14,6 +14,7 @@ import { openDb } from '../../src/local/db/open';
 import { migrate } from '../../src/local/db/migrator';
 import { migration001Initial } from '../../src/local/db/migrations/001_initial';
 import { migration002SqliteVec } from '../../src/local/db/migrations/002_sqlite_vec';
+import { migration003CallEdges } from '../../src/local/db/migrations/003_call_edges';
 import { loadSqliteVec } from '../../src/local/db/sqlite-vec';
 import { computeNodeId } from '../../src/local/deterministic-ids';
 
@@ -36,7 +37,11 @@ describeIfVec('LocalTransport (live: real DB + MockEmbedder)', () => {
   beforeEach(async () => {
     db = openDb(':memory:');
     loadSqliteVec(db);
-    await migrate(db, [migration001Initial, migration002SqliteVec]);
+    await migrate(db, [
+      migration001Initial,
+      migration002SqliteVec,
+      migration003CallEdges,
+    ]);
 
     // Seed one chunk + one symbol + one import.
     const chunkId = 'chunk-1';

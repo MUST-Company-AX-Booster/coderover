@@ -1,5 +1,96 @@
 # Changelog
 
+## 0.5.0 — 2026-04-29
+
+Closes the three deferred items from the 0.4.0 evaluation report
+(B3 / B5 / B9). Adds a new companion package
+[`@coderover/mcp-typescript`](https://www.npmjs.com/package/@coderover/mcp-typescript)
+for proper TS grammar support.
+
+### ⚠️ Behaviour change
+
+- **`find_dependencies` dispatch heuristic changed** for bare-name
+  targets. Pre-0.5.0, passing `lodash` to `find_dependencies` matched
+  the imports table via an internal `pkg:` rewrite. 0.5.0 routes
+  bare-name targets to symbol-grain by default (so
+  `find_dependencies("verify")` returns the call sites of any function
+  literally named `verify`). To recover the 0.4.x behaviour for bare
+  module specifiers, pass the explicit `pkg:` form:
+  `find_dependencies("pkg:lodash")`. Path-shaped (`/`, `\`, or known
+  source extensions) and scoped-package (`@scope/name`) targets are
+  unchanged.
+
+### Added
+
+- **B5 — Symbol-grain `find_dependencies`** (the 0.4.0 README's
+  leading example finally works).
+  - New `call_edges` table (migration 003) records every call site
+    with `caller_qualified` / `callee_name` / `callee_qualified` /
+    `src_file` / `call_line`. Indexes on the two callee columns and
+    `src_file` keep upstream / downstream / reingest queries cheap.
+  - JS/TS call extraction lands here. Walks every function / method /
+    arrow body, recognises bare (`foo()`) and member (`obj.bar()`)
+    callee shapes; top-level calls are deliberately skipped (agent
+    noise). Caller attribution covers `function`, `class.method`,
+    `class.constructor`, and arrow `const foo = () => ...`.
+  - `find_dependencies` now dispatches on target shape (file path /
+    bare module specifier → file-grain; qualified or bare symbol →
+    symbol-grain). Response gains optional `targetKind: 'file' | 'symbol'`
+    and per-entry `symbol` / `line` fields for symbol-grain edges.
+  - Python / Go / Java call extractors are tracked for 0.5.1 — the
+    pipeline already dispatches per language, those extractors just
+    return `[]` today. JS/TS is the most common B5 query path.
+
+- **B3 — Optional `tree-sitter-typescript` via the
+  `@coderover/mcp-typescript` companion package.** The 0.4.0 eval
+  flagged that `tree-sitter-javascript` chokes on TS-specific syntax
+  (interfaces, type aliases, generics, return annotations end up
+  under `hasError` nodes and the chunker drops them). 0.5.0 adds a
+  graceful upgrade path:
+  - Install `@coderover/mcp-typescript` and `@coderover/mcp` picks up
+    the real TS grammar automatically — no flag, no env var.
+  - Without the companion, behaviour is unchanged from 0.4.x: the JS
+    grammar fallback runs and a one-line stderr warning fires once
+    per process pointing at the install command.
+  - Splitting the grammar into a companion follows the same pattern
+    `@coderover/mcp-offline` introduced in 0.3.0 — keeps the default
+    `@coderover/mcp` install lean (no 38 MB native grammar tax for
+    pure-JS / Python / Go / Java users).
+  - Loader exposes `isTypeScriptCompanionAvailable()` so `doctor` and
+    integration tests can check the wiring without re-running the
+    probe.
+
+- **B9 — `coderover clean --unattributed`.** Reclaims disk from
+  pre-0.2.2 indices that have no sidecar (listed as
+  `(unknown — pre-0.2.2 index)`). `--orphans` deliberately can't
+  touch them because we can't prove they're orphaned without a
+  sidecar. The two flags are disjoint and OR-compose when both
+  passed.
+
+### Tests
+
+- 5 new clean-cmd tests (B9): parser, selector disjointness, OR
+  composition, end-to-end delete plan, refusal-hint update.
+- 6 new call-extractor unit tests (B5, TS_REAL=1): function / class
+  method / member call / top-level skip / arrow lexical_declaration /
+  distinct edge_ids per line.
+- 6 new `find_dependencies` tests (B5): symbol-grain upstream
+  qualified + bare, symbol-grain downstream, classifyTarget routing
+  branches.
+- 3 new grammar-loader tests (B3): companion-absent fallback warning,
+  companion-present grammar selection, fallback-warning de-dup.
+- 0.4.x tests updated for the bare-module dispatch change and the new
+  `targetKind` envelope field.
+
+### Verification
+
+```
+npm run typecheck       exit 0
+npm test                448 passed (was 433 + 15), 0 failed
+npm run test:ts         all real-tree-sitter suites pass
+npm run smoke:pack      packed tarball install + 4 boot checks pass
+```
+
 ## 0.4.0 — 2026-04-24
 
 Bugfix-driven minor. The headline correctness fixes change `tools/call`'s

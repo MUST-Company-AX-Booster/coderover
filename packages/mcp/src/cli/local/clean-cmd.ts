@@ -6,6 +6,12 @@
  *   - `--orphans` → only delete indices whose sidecar `projectRoot` no
  *     longer exists on disk. DBs without sidecars are never touched
  *     (we can't prove they're orphaned).
+ *   - `--unattributed` → delete indices that have NO sidecar
+ *     (`projectRoot === null`). These are pre-0.2.2 indices written
+ *     before the sidecar format existed; `--orphans` deliberately can't
+ *     touch them because we can't prove they're orphaned. Use this
+ *     flag when you've decided the unattributed entries under
+ *     `~/.coderover/` are stale and want to reclaim the space.
  *   - `--older-than <N>d` → delete indices whose last-indexed (or
  *     mtime, if no sidecar) age exceeds N days.
  *   - `--all` → every index, sidecar and all. Destructive; requires
@@ -13,6 +19,9 @@
  *   - `--dry-run` (default when `--yes` is absent) → print the plan,
  *     change nothing.
  *   - `--yes` → actually delete.
+ *
+ * Filters compose with OR semantics: `--orphans --unattributed` selects
+ * any DB matching either condition.
  *
  * Every delete removes the DB plus its `-wal`, `-shm`, and `.meta.json`
  * sidecars. Idempotent: a missing sidecar is never an error.
@@ -36,6 +45,7 @@ export interface CleanCmdDeps {
 
 export interface CleanCmdArgs {
   orphans: boolean;
+  unattributed: boolean;
   all: boolean;
   olderThanDays?: number;
   dryRun: boolean;
@@ -47,6 +57,7 @@ export interface CleanCmdArgs {
 export function parseCleanArgs(argv: string[]): CleanCmdArgs {
   const out: CleanCmdArgs = {
     orphans: false,
+    unattributed: false,
     all: false,
     dryRun: false,
     yes: false,
@@ -59,6 +70,10 @@ export function parseCleanArgs(argv: string[]): CleanCmdArgs {
     }
     if (tok === '--orphans') {
       out.orphans = true;
+      continue;
+    }
+    if (tok === '--unattributed') {
+      out.unattributed = true;
       continue;
     }
     if (tok === '--all') {
@@ -122,6 +137,12 @@ export function selectRows(
   const dayMs = 24 * 60 * 60 * 1000;
   return rows.filter((r) => {
     if (args.orphans && r.orphan) return true;
+    // `--unattributed` targets rows that have no sidecar at all
+    // (`projectRoot === null`). These were written before 0.2.2 and are
+    // deliberately invisible to `--orphans` (we can't prove they're
+    // orphaned without a sidecar). Disjoint from `orphan: true` by
+    // construction — see `collectIndices` in list-cmd.ts.
+    if (args.unattributed && r.projectRoot === null) return true;
     if (args.olderThanDays !== undefined) {
       const age = now - (r.lastIndexedAt ?? r.mtimeMs);
       if (age >= args.olderThanDays * dayMs) return true;
@@ -146,10 +167,15 @@ export function runCleanCmd(argv: string[], deps: CleanCmdDeps = {}): number {
     stderr.write(`[coderover clean] ${args.unknown}\n`);
     return 2;
   }
-  if (!args.orphans && !args.all && args.olderThanDays === undefined) {
+  if (
+    !args.orphans &&
+    !args.unattributed &&
+    !args.all &&
+    args.olderThanDays === undefined
+  ) {
     stderr.write(
       '[coderover clean] refusing to run without a filter.\n' +
-        '  Pass --orphans, --older-than <Nd>, or --all.\n',
+        '  Pass --orphans, --unattributed, --older-than <Nd>, or --all.\n',
     );
     return 2;
   }
@@ -218,6 +244,9 @@ function helpText(): string {
     'FILTERS (at least one required unless --help)',
     '  --orphans            Delete indices whose project root no longer',
     '                       exists on disk.',
+    '  --unattributed       Delete indices that have no sidecar (pre-0.2.2',
+    '                       indices, listed as "(unknown — pre-0.2.2',
+    '                       index)"). Disjoint from --orphans.',
     '  --older-than <Nd>    Delete indices last indexed > N days ago.',
     '  --all                Delete every index (requires --yes).',
     '',

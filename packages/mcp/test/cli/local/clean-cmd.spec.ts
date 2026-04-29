@@ -69,6 +69,18 @@ describe('parseCleanArgs', () => {
     const a = parseCleanArgs(['--whomst']);
     expect(a.unknown).toMatch(/unknown flag/);
   });
+
+  it('parses --unattributed (0.5.0)', () => {
+    const a = parseCleanArgs(['--unattributed']);
+    expect(a.unattributed).toBe(true);
+    expect(a.unknown).toBeUndefined();
+  });
+
+  it('--unattributed combines with --orphans', () => {
+    const a = parseCleanArgs(['--orphans', '--unattributed']);
+    expect(a.orphans).toBe(true);
+    expect(a.unattributed).toBe(true);
+  });
 });
 
 describe('selectRows', () => {
@@ -94,6 +106,7 @@ describe('selectRows', () => {
         rows,
         {
           orphans: true,
+          unattributed: false,
           all: false,
           dryRun: false,
           yes: false,
@@ -113,6 +126,7 @@ describe('selectRows', () => {
         rows,
         {
           orphans: false,
+          unattributed: false,
           all: false,
           olderThanDays: 30,
           dryRun: false,
@@ -133,6 +147,7 @@ describe('selectRows', () => {
         rows,
         {
           orphans: false,
+          unattributed: false,
           all: true,
           dryRun: false,
           yes: false,
@@ -140,6 +155,57 @@ describe('selectRows', () => {
         now,
       ).map((r) => r.dbPath),
     ).toEqual(['/a', '/b']);
+  });
+
+  it('--unattributed picks only rows with no sidecar (projectRoot === null)', () => {
+    const rows: ListRow[] = [
+      mkRow({ dbPath: '/sidecar', projectRoot: '/p', orphan: false }),
+      mkRow({ dbPath: '/orphan', projectRoot: '/dead', orphan: true }),
+      mkRow({
+        dbPath: '/preold',
+        projectRoot: null,
+        lastIndexedAt: null,
+        orphan: false,
+      }),
+    ];
+    expect(
+      selectRows(
+        rows,
+        {
+          orphans: false,
+          unattributed: true,
+          all: false,
+          dryRun: false,
+          yes: false,
+        },
+        now,
+      ).map((r) => r.dbPath),
+    ).toEqual(['/preold']);
+  });
+
+  it('--unattributed and --orphans are disjoint and OR-compose', () => {
+    const rows: ListRow[] = [
+      mkRow({ dbPath: '/orphan', projectRoot: '/dead', orphan: true }),
+      mkRow({
+        dbPath: '/preold',
+        projectRoot: null,
+        lastIndexedAt: null,
+        orphan: false,
+      }),
+      mkRow({ dbPath: '/keep', projectRoot: '/p', orphan: false }),
+    ];
+    const sel = selectRows(
+      rows,
+      {
+        orphans: true,
+        unattributed: true,
+        all: false,
+        dryRun: false,
+        yes: false,
+      },
+      now,
+    ).map((r) => r.dbPath);
+    expect(sel.sort()).toEqual(['/orphan', '/preold']);
   });
 
   it('combining --orphans and --older-than is OR, not AND', () => {
@@ -156,6 +222,7 @@ describe('selectRows', () => {
       rows,
       {
         orphans: true,
+        unattributed: false,
         all: false,
         olderThanDays: 30,
         dryRun: false,
@@ -255,6 +322,61 @@ describe('runCleanCmd', () => {
       'o2.db',
     ]);
     expect(s.outText()).toMatch(/Deleting 2 indexes/);
+  });
+
+  it('--unattributed targets pre-0.2.2 indices (no sidecar) and skips attributed ones (0.5.0)', async () => {
+    // Three DBs: one with no sidecar (the pre-0.2.2 entry we want to
+    // clean), one with a sidecar pointing at an existing dir (keep),
+    // and one with a sidecar pointing at a missing dir (orphan, NOT
+    // selected by --unattributed).
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), 'coderover-clean-unattr-'));
+    await fs.mkdir(path.join(home, '.coderover'), { recursive: true });
+    // Pre-0.2.2 — bare DB, no .meta.json sidecar.
+    await fs.writeFile(
+      path.join(home, '.coderover', 'preold.db'),
+      Buffer.alloc(10),
+    );
+    // Attributed, healthy.
+    await fs.writeFile(
+      path.join(home, '.coderover', 'keep.db'),
+      Buffer.alloc(10),
+    );
+    touchMeta(path.join(home, '.coderover', 'keep.db'), home, 'spec', Date.now());
+    // Attributed, but root missing → --orphans territory, not --unattributed.
+    await fs.writeFile(
+      path.join(home, '.coderover', 'orph.db'),
+      Buffer.alloc(10),
+    );
+    touchMeta(
+      path.join(home, '.coderover', 'orph.db'),
+      '/missing/dir',
+      'spec',
+      Date.now(),
+    );
+
+    const s = captureStreams();
+    const removed: string[] = [];
+    const code = runCleanCmd(['--unattributed', '--yes'], {
+      homeDir: home,
+      stdout: s.out,
+      stderr: s.err,
+      removeDb: (p) => removed.push(p),
+    });
+    expect(code).toBe(0);
+    expect(removed.map((p) => path.basename(p))).toEqual(['preold.db']);
+    expect(s.outText()).toMatch(/Deleting 1 index/);
+  });
+
+  it('refuses to run with no filter and now mentions --unattributed in the hint (0.5.0)', async () => {
+    const home = await mkHomeWith([]);
+    const s = captureStreams();
+    const code = runCleanCmd([], {
+      homeDir: home,
+      stdout: s.out,
+      stderr: s.err,
+    });
+    expect(code).toBe(2);
+    expect(s.errText()).toMatch(/--unattributed/);
   });
 
   it('prints "Nothing to clean" when no row matches', async () => {

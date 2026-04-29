@@ -1,6 +1,6 @@
 {
   "name": "@coderover/mcp",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "MCP server and installer for CodeRover graph-aware code search.",
   "license": "MIT",
   "repository": {

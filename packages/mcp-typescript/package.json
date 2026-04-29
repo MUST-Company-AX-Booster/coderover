@@ -1,0 +1,40 @@
+{
+  "name": "@coderover/mcp-typescript",
+  "version": "0.1.0",
+  "description": "Real TypeScript grammar for @coderover/mcp local-mode indexing — bundles tree-sitter-typescript so the default @coderover/mcp install stays lean.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MUST-Company-AX-Booster/coderover.git",
+    "directory": "packages/mcp-typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/MUST-Company-AX-Booster/coderover/issues"
+  },
+  "homepage": "https://github.com/MUST-Company-AX-Booster/coderover/tree/main/packages/mcp-typescript#readme",
+  "keywords": [
+    "mcp",
+    "coderover",
+    "typescript",
+    "tree-sitter",
+    "grammar"
+  ],
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@coderover/mcp": "^0.5.0",
+    "tree-sitter-typescript": "^0.23.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -28,6 +28,7 @@ import { openDb } from '../../src/local/db/open';
 import { migrate } from '../../src/local/db/migrator';
 import { migration001Initial } from '../../src/local/db/migrations/001_initial';
 import { migration002SqliteVec } from '../../src/local/db/migrations/002_sqlite_vec';
+import { migration003CallEdges } from '../../src/local/db/migrations/003_call_edges';
 import { loadSqliteVec } from '../../src/local/db/sqlite-vec';
 import { MockEmbedder } from '../../src/local/embed/embedder';
 import type { Embedder } from '../../src/local/embed/types';
@@ -39,7 +40,11 @@ async function openTestDb(): Promise<{ db: Database.Database; cleanup: () => voi
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-pipeline-'));
   const dbPath = path.join(dir, 'local.db');
   const db = openDb(dbPath);
-  await migrate(db, [migration001Initial, migration002SqliteVec]);
+  await migrate(db, [
+    migration001Initial,
+    migration002SqliteVec,
+    migration003CallEdges,
+  ]);
   loadSqliteVec(db);
   return {
     db,

@@ -66,6 +66,7 @@ import {
   extractImports,
   type ExtractedImport,
 } from './ingest/import-extractor';
+import { extractJsCalls, type ExtractedCall } from './ingest/call-extractor';
 import { parseFile } from './ingest/grammar-loader';
 import {
   detectLanguage,
@@ -118,6 +119,38 @@ function extractSymbolsForLanguage(args: {
     default: {
       // exhaustive guard — every member of `SupportedLanguage` should
       // have a branch above.
+      const _exhaustive: never = args.language;
+      void _exhaustive;
+      return [];
+    }
+  }
+}
+
+/**
+ * Dispatch call-edge extraction to the language-specific extractor.
+ *
+ * 0.5.0 ships JS/TS only. Python / Go / Java call extractors are
+ * tracked for 0.5.1 — until then those languages still get full chunks,
+ * symbols, and imports, but symbol-grain `find_dependencies` returns
+ * empty for callers in those languages. The matrix in the README
+ * spells this out so users aren't surprised.
+ */
+function extractCallsForLanguage(args: {
+  language: SupportedLanguage;
+  filePath: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tree: any;
+}): ExtractedCall[] {
+  switch (args.language) {
+    case 'javascript':
+    case 'typescript':
+      return extractJsCalls({ filePath: args.filePath, tree: args.tree });
+    case 'python':
+    case 'go':
+    case 'java':
+      // Per-language call extraction lands in 0.5.1.
+      return [];
+    default: {
       const _exhaustive: never = args.language;
       void _exhaustive;
       return [];
@@ -211,6 +244,8 @@ export interface IndexRepoResult {
   chunks: number;
   symbols: number;
   imports: number;
+  /** Call-graph edges extracted this run (0.5.0+; JS/TS only today). */
+  calls: number;
   elapsedMs: number;
 }
 
@@ -235,6 +270,7 @@ export async function indexRepo(opts: IndexRepoOptions): Promise<IndexRepoResult
   let chunkTotal = 0;
   let symbolTotal = 0;
   let importTotal = 0;
+  let callTotal = 0;
 
   for await (const walked of walkRepo(opts.rootPath, {
     additionalIgnore: opts.additionalIgnore,
@@ -278,6 +314,12 @@ export async function indexRepo(opts: IndexRepoOptions): Promise<IndexRepoResult
       tree: walked.tree,
     });
 
+    const calls = extractCallsForLanguage({
+      language: walked.language,
+      filePath: walked.relativePath,
+      tree: walked.tree,
+    });
+
     // Embed OUTSIDE the transaction — network / mock CPU shouldn't hold
     // a SQLite write lock.
     const embedResp = await opts.embedder.embed({
@@ -293,11 +335,12 @@ export async function indexRepo(opts: IndexRepoOptions): Promise<IndexRepoResult
     const apply = opts.db.transaction(() => {
       // Delete prior rows first — changed-file path. No-ops on a fresh
       // file. Order: FK-referencing tables first, then chunks, then
-      // independent imports.
+      // independent imports + call edges.
       stmts.deleteSymbolsByFile.run(walked.relativePath);
       stmts.deleteVecByFile.run(walked.relativePath);
       stmts.deleteChunksByFile.run(walked.relativePath);
       stmts.deleteImportsByFile.run(walked.relativePath);
+      stmts.deleteCallEdgesByFile.run(walked.relativePath);
 
       for (let i = 0; i < chunks.length; i++) {
         const c = chunks[i];
@@ -318,6 +361,18 @@ export async function indexRepo(opts: IndexRepoOptions): Promise<IndexRepoResult
       for (const imp of imports) {
         stmts.insertImport.run(imp.edgeId, imp.srcFile, imp.targetPath, imp.confidence);
       }
+      for (const call of calls) {
+        stmts.insertCallEdge.run(
+          call.edgeId,
+          call.callerNodeId,
+          call.callerQualified,
+          call.calleeName,
+          call.calleeQualified,
+          walked.relativePath,
+          call.callLine,
+          call.confidence,
+        );
+      }
       stmts.insertFileHash.run(walked.relativePath, walked.contentHash, Date.now());
     });
     apply();
@@ -326,6 +381,7 @@ export async function indexRepo(opts: IndexRepoOptions): Promise<IndexRepoResult
     chunkTotal += chunks.length;
     symbolTotal += symbols.length;
     importTotal += imports.length;
+    callTotal += calls.length;
 
     opts.onProgress?.({
       file: walked.relativePath,
@@ -342,6 +398,7 @@ export async function indexRepo(opts: IndexRepoOptions): Promise<IndexRepoResult
     chunks: chunkTotal,
     symbols: symbolTotal,
     imports: importTotal,
+    calls: callTotal,
     elapsedMs: Date.now() - started,
   };
 }
@@ -363,6 +420,8 @@ export interface IndexFileResult {
   chunks: number;
   symbols: number;
   imports: number;
+  /** Call-graph edges extracted (0.5.0+; JS/TS only today). */
+  calls: number;
   skipped: boolean;
 }
 
@@ -383,7 +442,7 @@ export async function indexFile(opts: IndexFileOptions): Promise<IndexFileResult
   // whose extension we don't support. Skip early.
   const language = detectLanguage(opts.absolutePath);
   if (!language) {
-    return { chunks: 0, symbols: 0, imports: 0, skipped: true };
+    return { chunks: 0, symbols: 0, imports: 0, calls: 0, skipped: true };
   }
 
   let content: string;
@@ -392,7 +451,7 @@ export async function indexFile(opts: IndexFileOptions): Promise<IndexFileResult
   } catch {
     // File disappeared between the event and the read — treat as
     // skipped, not as an error. The `unlink` path handles real deletes.
-    return { chunks: 0, symbols: 0, imports: 0, skipped: true };
+    return { chunks: 0, symbols: 0, imports: 0, calls: 0, skipped: true };
   }
 
   const contentHash = sha256Hex(content);
@@ -402,7 +461,7 @@ export async function indexFile(opts: IndexFileOptions): Promise<IndexFileResult
     .get(relativePath) as { sha256: string } | undefined;
 
   if (existing && existing.sha256 === contentHash) {
-    return { chunks: 0, symbols: 0, imports: 0, skipped: true };
+    return { chunks: 0, symbols: 0, imports: 0, calls: 0, skipped: true };
   }
 
   // Parse.
@@ -411,7 +470,7 @@ export async function indexFile(opts: IndexFileOptions): Promise<IndexFileResult
     tree = parseFile(content, language);
   } catch {
     // tree-sitter's native binding threw — skip, don't crash the daemon.
-    return { chunks: 0, symbols: 0, imports: 0, skipped: true };
+    return { chunks: 0, symbols: 0, imports: 0, calls: 0, skipped: true };
   }
 
   const chunks = chunkFile({
@@ -433,6 +492,11 @@ export async function indexFile(opts: IndexFileOptions): Promise<IndexFileResult
     repoRoot: opts.repoRoot,
     tree,
   });
+  const calls = extractCallsForLanguage({
+    language,
+    filePath: relativePath,
+    tree,
+  });
 
   // Embed outside the transaction.
   const embedResp = await opts.embedder.embed({
@@ -452,6 +516,7 @@ export async function indexFile(opts: IndexFileOptions): Promise<IndexFileResult
     stmts.deleteVecByFile.run(relativePath);
     stmts.deleteChunksByFile.run(relativePath);
     stmts.deleteImportsByFile.run(relativePath);
+    stmts.deleteCallEdgesByFile.run(relativePath);
 
     for (let i = 0; i < chunks.length; i++) {
       const c = chunks[i];
@@ -472,6 +537,18 @@ export async function indexFile(opts: IndexFileOptions): Promise<IndexFileResult
     for (const imp of imports) {
       stmts.insertImport.run(imp.edgeId, imp.srcFile, imp.targetPath, imp.confidence);
     }
+    for (const call of calls) {
+      stmts.insertCallEdge.run(
+        call.edgeId,
+        call.callerNodeId,
+        call.callerQualified,
+        call.calleeName,
+        call.calleeQualified,
+        relativePath,
+        call.callLine,
+        call.confidence,
+      );
+    }
     stmts.insertFileHash.run(relativePath, contentHash, Date.now());
   });
   apply();
@@ -480,6 +557,7 @@ export async function indexFile(opts: IndexFileOptions): Promise<IndexFileResult
     chunks: chunks.length,
     symbols: symbols.length,
     imports: imports.length,
+    calls: calls.length,
     skipped: false,
   };
 }
@@ -520,6 +598,7 @@ export function removeFile(args: {
 
     db.prepare('DELETE FROM code_chunks WHERE file_path = ?').run(filePath);
     db.prepare('DELETE FROM imports WHERE src_file = ?').run(filePath);
+    db.prepare('DELETE FROM call_edges WHERE src_file = ?').run(filePath);
     db.prepare('DELETE FROM file_hashes WHERE file_path = ?').run(filePath);
   });
 
@@ -567,6 +646,15 @@ function prepareStatements(db: Database.Database) {
     ),
     deleteImportsByFile: db.prepare(
       `DELETE FROM imports WHERE src_file = ?`,
+    ),
+    insertCallEdge: db.prepare(
+      `INSERT OR REPLACE INTO call_edges
+         (edge_id, caller_node_id, caller_qualified, callee_name,
+          callee_qualified, src_file, call_line, confidence)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ),
+    deleteCallEdgesByFile: db.prepare(
+      `DELETE FROM call_edges WHERE src_file = ?`,
     ),
   };
 }

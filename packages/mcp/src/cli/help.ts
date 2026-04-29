@@ -50,6 +50,7 @@ LIST FLAGS
 
 CLEAN FLAGS
   --orphans             Target indices whose project root is gone.
+  --unattributed        Target pre-0.2.2 indices that have no sidecar.
   --older-than <Nd>     Target indices last indexed > N days ago.
   --all                 Target every index. Requires --yes.
   -y, --yes             Actually delete. Default is dry-run.

@@ -94,7 +94,8 @@ Other prompts worth trying:
 
 - **"semantic search: functions that retry on 429"** — `search_code` returns hits stamped `confidence: EXTRACTED` with a numeric `confidence_score`. The result envelope also carries `meta.embedder` (`openai`/`offline`/`mock`) so an agent can downweight `mock` hits — those have no semantic signal by design.
 - **"find the symbol `PaymentProcessor`"** — `find_symbol` returns one row per match with `node_id`, `filePath`, and the line span. The qualified-name LIKE-match also surfaces `PaymentProcessor.charge`, `PaymentProcessor.refund`, etc.
-- **"what does `src/auth/auth.service.ts` import?"** — `find_dependencies` is **file-grain today**: pass a repo-relative path. Symbol-grain (`AuthService.verify` → individual call sites) is on the roadmap for the next minor.
+- **"who calls `AuthService.verify`?"** — `find_dependencies` is now **file-grain or symbol-grain** (0.5.0+). Pass a repo-relative path (`src/auth/auth.service.ts`) for file-grain edges via the imports table, or a qualified symbol (`AuthService.verify`) for call-site edges via the new `call_edges` table. The response includes `targetKind: 'file' | 'symbol'` plus per-entry `symbol` and `line` fields for symbol-grain hits. Symbol-grain call extraction is JS/TS-only in 0.5.0; Python/Go/Java land in 0.5.1.
+- **"what does `src/auth/auth.service.ts` import?"** — pass the file path; you get the upstream importers and downstream imports as before.
 
 ### Try it without an API key
 
@@ -164,19 +165,35 @@ npx @coderover/mcp@latest clean --older-than 30d           # stale indices
 npx @coderover/mcp@latest clean --orphans --yes            # actually delete
 ```
 
-Indices written by 0.2.x (pre-sidecar) list as `(unknown — pre-0.2.2 index)` and are never touched by `clean --orphans` — only indices with a known, now-nonexistent `projectRoot` count as orphans.
+Indices written by 0.2.x (pre-sidecar) list as `(unknown — pre-0.2.2 index)` and are never touched by `clean --orphans` — only indices with a known, now-nonexistent `projectRoot` count as orphans. To reclaim disk from those, pass `--unattributed` (0.5.0+):
+
+```sh
+npx @coderover/mcp@latest clean --unattributed --yes      # delete every pre-0.2.2 index
+npx @coderover/mcp@latest clean --orphans --unattributed  # both, OR-composed; dry-run
+```
 
 ## Local-mode language coverage
 
 | Language    | Chunks | Symbols | Imports | Notes |
 | ----------- | ------ | ------- | ------- | ----- |
 | JavaScript  | ✅     | ✅      | ✅      | Full coverage. Both CommonJS (`require`) and ESM (`import`) imports are extracted, plus dynamic `import()`. |
-| TypeScript  | ⚠️     | ⚠️      | ✅      | Parsed via the JS grammar, so type annotations (`: string`, `Promise<T>`, generics) and TS-only declarations (`interface`, `type`) currently degrade — the affected functions/interfaces won't show up in `find_symbol`. Imports still work. A `@coderover/mcp-typescript` companion package is on the roadmap to unlock the real TS grammar without bloating every install (the `tree-sitter-typescript` package is ~38 MB unpacked). |
+| TypeScript  | ✅†    | ✅†     | ✅      | Full coverage when [`@coderover/mcp-typescript`](https://www.npmjs.com/package/@coderover/mcp-typescript) is installed (the real TS grammar — interfaces, type aliases, generics, decorators, return annotations all parse cleanly). Without the companion, the JS-grammar fallback runs and TS-only constructs degrade exactly as in 0.4.x. † indicates the companion-installed path. |
 | Python      | ✅     | ✅      | ✅      | Classes, methods (`Class.method` qualified), top-level functions, decorated definitions, `import`, `from … import`, and relative imports (`from .sib import x`). |
 | Go          | ✅     | ✅      | ✅      | Functions, methods (`Type.method` qualified), `type` declarations (struct / interface / alias). Imports always emitted as `pkg:` (Go has no in-repo path resolution). |
 | Java        | ✅     | ✅      | ✅      | Classes, interfaces, enums, methods, constructors, records (treated as classes). Imports include `static` and wildcard forms. |
 
-`find_dependencies` is **file-grain in 0.4.x**: pass repo-relative paths like `src/auth/auth.service.ts`, not symbol qualified names. Symbol-grain traversal lands in 0.5.0.
+`find_dependencies` is **file-grain or symbol-grain in 0.5.0+**: pass a repo-relative path (`src/auth/auth.service.ts`) for the imports edges, or a qualified symbol (`AuthService.verify`) for the call-site edges. The response includes a `targetKind: 'file' | 'symbol'` marker. Symbol-grain call extraction is JS/TS-only in 0.5.0; Python/Go/Java land in 0.5.1.
+
+### Companion packages
+
+`@coderover/mcp` keeps its install lean by splitting heavy optional deps into companion packages:
+
+| Companion                                                                                            | Adds                                                                       | Install cost                            |
+| ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | --------------------------------------- |
+| [`@coderover/mcp-offline`](https://www.npmjs.com/package/@coderover/mcp-offline) (0.3.0+)            | Offline embeddings via `Xenova/all-MiniLM-L6-v2` (Transformers.js, 384-dim) | ~45 MB (ONNX runtime + grammar weights) |
+| [`@coderover/mcp-typescript`](https://www.npmjs.com/package/@coderover/mcp-typescript) (0.5.0+)      | Real `tree-sitter-typescript` grammar (interfaces, type aliases, generics, decorators) | ~38 MB (precompiled native parser per platform) |
+
+Install the one you need; `@coderover/mcp` probes for each at boot and uses it automatically when present.
 
 ## Resilience: catalog cache (remote mode)
 

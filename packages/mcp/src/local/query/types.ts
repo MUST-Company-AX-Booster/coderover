@@ -63,10 +63,28 @@ export interface FindDependenciesEntry {
   filePath: string;
   confidence: 'EXTRACTED';
   confidence_score: 1.0;
+  /**
+   * Symbol-grain only (0.5.0+): the qualified name of the function /
+   * method on the *other* side of the call edge. Present in
+   * `upstream` entries (the caller) and `downstream` entries (the
+   * callee) when `find_dependencies` was invoked with a symbol target.
+   * Omitted for file-grain results so the file-mode shape stays
+   * byte-identical to 0.4.x.
+   */
+  symbol?: string;
+  /** Symbol-grain only: 1-indexed source line of the call expression. */
+  line?: number;
 }
 
 export interface FindDependenciesResponse {
   target: string;
   upstream: FindDependenciesEntry[];
   downstream: FindDependenciesEntry[];
+  /**
+   * Indicates whether the target was interpreted as a file path or a
+   * qualified symbol. Lets agents tell what kind of edge they're
+   * looking at (and downweight noisy bare-name lookups). 0.5.0+;
+   * omitted in 0.4.x payloads.
+   */
+  targetKind?: 'file' | 'symbol';
 }

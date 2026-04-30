@@ -89,12 +89,20 @@ jobs:
       # Install all workspace deps WITHOUT running lifecycle scripts.
       # The static signature scan finds malicious code without executing it,
       # so we don't need to run a potentially-compromised postinstall to detect it.
+      #
+      # mcp-integration and mcp-offline don't ship a package-lock.json (they
+      # aren't published from this repo's CI). Fall back to `npm install` so
+      # their node_modules are still populated and scanned.
       - name: Install workspace deps (--ignore-scripts)
         run: |
           set -e
           for ws in coderover-api coderover-frontend packages/mcp packages/mcp-integration packages/mcp-offline; do
-            echo "::group::npm ci $ws"
-            (cd "$ws" && npm ci --ignore-scripts)
+            echo "::group::install $ws"
+            if [ -f "$ws/package-lock.json" ]; then
+              (cd "$ws" && npm ci --ignore-scripts)
+            else
+              (cd "$ws" && npm install --ignore-scripts --no-audit --no-fund)
+            fi
             echo "::endgroup::"
           done
       # PolinRider / Beavertail scan (DPRK Contagious Interview UNC5342):

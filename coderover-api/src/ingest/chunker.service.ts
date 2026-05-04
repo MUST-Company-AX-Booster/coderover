@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AstService, SymbolInfo, NestRole, ImportInfo, MethodInfo, CallSiteInfo, InheritanceInfo } from './ast.service';
+import { countCredentialMatches, redactCredentials } from './credential-redactor.service';
 import { MultiLangAstService } from './languages/multi-lang-ast.service';
 import { LanguageDetectorService, SupportedLanguage, SupportedFramework } from './languages/language-detector.service';
 
@@ -231,9 +232,13 @@ export class ChunkerService {
         // (Since EmbedderService inserts them into separate tables)
         const isFirstChunk = currentStart === 0;
         
+        // Phase 3C (Zero Trust): scrub high-confidence credential
+        // patterns before the chunk reaches the embedder. A committed
+        // AWS key or GitHub PAT in source would otherwise land in
+        // pgvector and the LLM provider's logs.
         chunks.push({
-          chunkText,
-          rawText,
+          chunkText: redactCredentials(chunkText),
+          rawText: redactCredentials(rawText),
           filePath,
           moduleName,
           lineStart: currentStart + 1,
@@ -254,6 +259,18 @@ export class ChunkerService {
       const overlapLines = this.charsToLineCount(lines, endLine, OVERLAP_SIZE);
       const nextStart = endLine + 1 - overlapLines;
       currentStart = nextStart <= currentStart ? endLine + 1 : nextStart;
+    }
+
+    // Per-file telemetry on credential redactions — useful when reading
+    // ingestion logs to spot a repo that's spraying secrets in source.
+    const fileLevelMatches = countCredentialMatches(content);
+    const totalRedacted = Object.values(fileLevelMatches).reduce((a, b) => a + b, 0);
+    if (totalRedacted > 0) {
+      this.logger.warn(
+        `Redacted ${totalRedacted} credential pattern(s) from ${filePath}: ${Object.entries(fileLevelMatches)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(', ')}`,
+      );
     }
 
     this.logger.debug(`Chunked ${filePath} (${language}): ${chunks.length} chunks from ${lines.length} lines`);

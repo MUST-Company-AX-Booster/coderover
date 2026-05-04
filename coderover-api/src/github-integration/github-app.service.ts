@@ -26,6 +26,15 @@ import * as jwt from 'jsonwebtoken';
  */
 const INSTALLATION_LOOKUP_TTL_MS = 5 * 60 * 1_000;
 
+/**
+ * Hard cap per cache. JS Map iterates in insertion order, so once we hit
+ * the cap we evict oldest-first (FIFO). Cap exists purely as a memory
+ * safety net for long-running processes that look up a high cardinality
+ * of distinct repos — the TTL would eventually let them drop, but FIFO
+ * makes that bounded rather than monotonic.
+ */
+const INSTALLATION_LOOKUP_CACHE_CAP = 500;
+
 interface CachedInstallationLookup {
   installationId: number | null;
   cachedAt: number;
@@ -37,8 +46,29 @@ export class GitHubAppService {
   private installationTokenCache = new Map<number, { token: string; expiresAt: number }>();
   private repoInstallationCache = new Map<string, CachedInstallationLookup>();
   private ownerInstallationCache = new Map<string, CachedInstallationLookup>();
+  // In-flight lookup dedup: if N concurrent callers ask for the same key
+  // before the first network round-trip finishes, they all await the same
+  // promise instead of firing N redundant requests at GitHub.
+  private inflightRepoLookups = new Map<string, Promise<number | null>>();
+  private inflightOwnerLookups = new Map<string, Promise<number | null>>();
 
   constructor(private readonly configService: ConfigService) {}
+
+  /**
+   * FIFO eviction helper — when a cache reaches its cap, drop the oldest
+   * entries until it's under cap. Map iterates in insertion order in JS,
+   * so the first key returned by `keys()` is the oldest. Cheap O(k) for
+   * the small k we evict.
+   */
+  private capCache<K, V>(cache: Map<K, V>, cap: number): void {
+    if (cache.size <= cap) return;
+    const evict = cache.size - cap;
+    let i = 0;
+    for (const k of cache.keys()) {
+      if (i++ >= evict) break;
+      cache.delete(k);
+    }
+  }
 
   isConfigured(): boolean {
     return Boolean(
@@ -155,14 +185,30 @@ export class GitHubAppService {
   async findInstallationForRepo(owner: string, repo: string): Promise<number | null> {
     if (!this.isConfigured()) return null;
     const key = `${owner.toLowerCase()}/${repo.toLowerCase()}`;
+
+    // 1. Cache hit (and not expired).
     const cached = this.repoInstallationCache.get(key);
     if (cached && Date.now() - cached.cachedAt < INSTALLATION_LOOKUP_TTL_MS) {
       return cached.installationId;
     }
 
-    const installationId = await this.lookupInstallationForRepo(owner, repo);
-    this.repoInstallationCache.set(key, { installationId, cachedAt: Date.now() });
-    return installationId;
+    // 2. In-flight dedup — N concurrent callers for the same key share a
+    //    single network round-trip instead of stampeding GitHub.
+    const inflight = this.inflightRepoLookups.get(key);
+    if (inflight) return inflight;
+
+    const promise = (async () => {
+      try {
+        const installationId = await this.lookupInstallationForRepo(owner, repo);
+        this.repoInstallationCache.set(key, { installationId, cachedAt: Date.now() });
+        this.capCache(this.repoInstallationCache, INSTALLATION_LOOKUP_CACHE_CAP);
+        return installationId;
+      } finally {
+        this.inflightRepoLookups.delete(key);
+      }
+    })();
+    this.inflightRepoLookups.set(key, promise);
+    return promise;
   }
 
   /**
@@ -174,20 +220,37 @@ export class GitHubAppService {
   async findInstallationForOwner(owner: string): Promise<number | null> {
     if (!this.isConfigured()) return null;
     const key = owner.toLowerCase();
+
     const cached = this.ownerInstallationCache.get(key);
     if (cached && Date.now() - cached.cachedAt < INSTALLATION_LOOKUP_TTL_MS) {
       return cached.installationId;
     }
 
-    const installationId = await this.lookupInstallationForOwner(owner);
-    this.ownerInstallationCache.set(key, { installationId, cachedAt: Date.now() });
-    return installationId;
+    const inflight = this.inflightOwnerLookups.get(key);
+    if (inflight) return inflight;
+
+    const promise = (async () => {
+      try {
+        const installationId = await this.lookupInstallationForOwner(owner);
+        this.ownerInstallationCache.set(key, { installationId, cachedAt: Date.now() });
+        this.capCache(this.ownerInstallationCache, INSTALLATION_LOOKUP_CACHE_CAP);
+        return installationId;
+      } finally {
+        this.inflightOwnerLookups.delete(key);
+      }
+    })();
+    this.inflightOwnerLookups.set(key, promise);
+    return promise;
   }
 
   /**
    * Drop the lookup caches. Called by the installation webhook handler
    * (when one is added) so newly-installed/uninstalled accounts aren't
    * served stale "no install" results for up to 5 minutes.
+   *
+   * Does NOT cancel in-flight lookups — they finish naturally and write
+   * their result into the (now-empty) cache, which is fine: the result
+   * will be the still-current GitHub state at the moment of the call.
    */
   invalidateInstallationLookupCache(): void {
     this.repoInstallationCache.clear();

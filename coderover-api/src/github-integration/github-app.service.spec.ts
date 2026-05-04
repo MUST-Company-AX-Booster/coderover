@@ -111,6 +111,50 @@ describe('GitHubAppService', () => {
       await svc.findInstallationForRepo('o', 'r');
       expect(svc.repoLookups).toBe(2);
     });
+
+    it('dedups concurrent in-flight lookups for the same key (no stampede)', async () => {
+      // Make the underlying lookup slow so 50 callers all arrive while it
+      // is still in-flight. With dedup, repoLookups must be exactly 1.
+      class SlowStub extends StubAppService {
+        protected async lookupInstallationForRepo(): Promise<number | null> {
+          this.repoLookups++;
+          await new Promise(r => setTimeout(r, 20));
+          return 42;
+        }
+      }
+      const svc = new SlowStub(makeConfig());
+      const results = await Promise.all(
+        Array.from({ length: 50 }, () => svc.findInstallationForRepo('octocat', 'hello')),
+      );
+      expect(results.every(r => r === 42)).toBe(true);
+      expect(svc.repoLookups).toBe(1);
+    });
+
+    it('after an in-flight lookup completes, a later call uses the cache (still 1 lookup)', async () => {
+      const svc = new StubAppService(makeConfig());
+      await svc.findInstallationForRepo('octocat', 'hello');
+      await svc.findInstallationForRepo('octocat', 'hello');
+      await svc.findInstallationForRepo('octocat', 'hello');
+      expect(svc.repoLookups).toBe(1);
+    });
+
+    it('caps cache size with FIFO eviction (oldest first)', async () => {
+      // We can't easily flip the constant from the test, but we CAN write
+      // 600+ unique keys and assert the map size never exceeds the cap.
+      const svc = new StubAppService(makeConfig());
+      svc.scriptedRepoResult = 1;
+      for (let i = 0; i < 600; i++) {
+        await svc.findInstallationForRepo('owner', `repo-${i}`);
+      }
+      // Reach into the protected cache via property access.
+      const cache = (svc as unknown as {
+        repoInstallationCache: Map<string, unknown>;
+      }).repoInstallationCache;
+      expect(cache.size).toBeLessThanOrEqual(500);
+      // Oldest (repo-0) should have been evicted; newest (repo-599) retained.
+      expect(cache.has('owner/repo-0')).toBe(false);
+      expect(cache.has('owner/repo-599')).toBe(true);
+    });
   });
 
   describe('findInstallationForOwner', () => {

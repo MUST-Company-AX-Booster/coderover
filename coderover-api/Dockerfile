@@ -1,25 +1,34 @@
 FROM node:20-alpine
 
 # Build deps for native modules (sharp / onnxruntime / tree-sitter grammars).
-# Installed as root because apk needs it; dropped at runtime via USER below.
+# Installed as root because apk needs it. Note: kept in the final image
+# today because `npm run migration:run` shells out to ts-node and needs
+# devDeps + src/ at runtime — moving to a multi-stage build requires
+# pre-compiling migrations to JS first, tracked as a follow-up.
 RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
-COPY package*.json ./
+# Phase 3A (Zero Trust): drop root BEFORE any app file lands so we never
+# need a separate `chown -R /app` layer (which would duplicate every
+# file in the image with new ownership metadata, bloating the image).
+# Subsequent COPYs use `--chown=node:node` to land files pre-owned, and
+# `npm ci` runs as node so node_modules is owned correctly at creation.
+RUN chown node:node /app
+USER node
+
+COPY --chown=node:node package*.json ./
 RUN npm ci --legacy-peer-deps
 
-COPY . .
+COPY --chown=node:node . .
 RUN npm run build
-
-# Phase 3A (Zero Trust): drop root for runtime. The base node:20-alpine
-# image already ships a non-root `node` user (uid 1000). chown the
-# workdir so the runtime user can read its own build output and write
-# the few transient files `migration:run` touches. Build steps above
-# stayed as root because apk + native compilation need it.
-RUN chown -R node:node /app
-USER node
 
 EXPOSE 3001
 
-CMD ["sh", "-c", "npm run migration:run && npm run start:prod"]
+# `exec` ensures the node process replaces the shell as PID 1 and
+# receives SIGTERM directly when the container stops, instead of the
+# shell swallowing the signal and forcing a kill timeout. We also drop
+# the `npm run start:prod` wrapper so node is genuinely PID 1 — `npm`
+# would otherwise sit between PID 1 and the actual node process and
+# delay signal forwarding.
+CMD ["sh", "-c", "npm run migration:run && exec node dist/main"]

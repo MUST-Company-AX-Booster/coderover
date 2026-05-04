@@ -1,10 +1,36 @@
 # Phase 3A (Zero Trust): all backing-store ports are bound to 127.0.0.1
 # only so they're reachable from the host (psql / redis-cli / Memgraph
 # Lab in a browser tab) but NOT from the external network. The api
-# container reaches them via the internal compose network, not the
+# container reaches them via per-service compose networks, not the
 # published port. To bind on a different host (e.g. a remote dev box),
 # explicitly override the port or ssh-tunnel — never re-expose to 0.0.0.0
 # in a shared-network environment.
+#
+# Phase 3B (Zero Trust): each backing store sits on its own internal
+# bridge network — `db-net` for postgres, `cache-net` for redis,
+# `graph-net` for memgraph. The api joins ALL three (and the default
+# bridge for external traffic to GitHub / LLM APIs). Net effect: a
+# compromised postgres cannot reach redis or memgraph; a compromised
+# redis cannot reach postgres or memgraph. Lateral movement between
+# stores is blocked at the docker network layer.
+#
+# `internal: true` on each store-net additionally cuts the store off
+# from external internet — postgres/redis/memgraph never need outbound
+# traffic, so a compromised dep that landed inside one cannot phone
+# home. The api stays on the default network for legitimate egress.
+networks:
+  default:
+    driver: bridge
+  db-net:
+    driver: bridge
+    internal: true
+  cache-net:
+    driver: bridge
+    internal: true
+  graph-net:
+    driver: bridge
+    internal: true
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -16,11 +42,15 @@ services:
       - '127.0.0.1:5434:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - db-net
 
   redis:
     image: redis:7-alpine
     ports:
       - '127.0.0.1:6380:6379'
+    networks:
+      - cache-net
 
   memgraph:
     image: memgraph/memgraph-mage:latest
@@ -28,6 +58,8 @@ services:
       - '127.0.0.1:7687:7687'
       - '127.0.0.1:7444:7444' # Memgraph Lab
     command: ["--log-level=TRACE"]
+    networks:
+      - graph-net
 
   api:
     build:
@@ -48,6 +80,11 @@ services:
       - postgres
       - redis
       - memgraph
+    networks:
+      - default
+      - db-net
+      - cache-net
+      - graph-net
 
 volumes:
   pgdata:

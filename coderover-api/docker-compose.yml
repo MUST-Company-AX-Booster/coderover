@@ -1,3 +1,10 @@
+# Phase 3A (Zero Trust): all backing-store ports are bound to 127.0.0.1
+# only so they're reachable from the host (psql / redis-cli / Memgraph
+# Lab in a browser tab) but NOT from the external network. The api
+# container reaches them via the internal compose network, not the
+# published port. To bind on a different host (e.g. a remote dev box),
+# explicitly override the port or ssh-tunnel — never re-expose to 0.0.0.0
+# in a shared-network environment.
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -6,20 +13,20 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - '5434:5432'
+      - '127.0.0.1:5434:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
 
   redis:
     image: redis:7-alpine
     ports:
-      - '6380:6379'
+      - '127.0.0.1:6380:6379'
 
   memgraph:
     image: memgraph/memgraph-mage:latest
     ports:
-      - '7687:7687'
-      - '7444:7444' # Memgraph Lab
+      - '127.0.0.1:7687:7687'
+      - '127.0.0.1:7444:7444' # Memgraph Lab
     command: ["--log-level=TRACE"]
 
   api:

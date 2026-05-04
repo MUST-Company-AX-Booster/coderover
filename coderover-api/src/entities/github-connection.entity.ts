@@ -7,6 +7,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { encryptedString } from '../common/crypto/encrypted-string.transformer';
 import { User } from './user.entity';
 
 /**
@@ -30,10 +31,14 @@ export class GithubConnection {
   @JoinColumn({ name: 'user_id' })
   user?: User;
 
-  @Column({ name: 'access_token', type: 'text' })
+  // Phase 2A (Zero Trust): tokens are AES-256-GCM encrypted at rest via the
+  // `encryptedString` transformer. Reads return plaintext, writes encrypt
+  // before insert/update. Legacy plaintext rows are returned as-is and
+  // re-encrypted on the next save (lazy migrate).
+  @Column({ name: 'access_token', type: 'text', transformer: encryptedString })
   accessToken!: string;
 
-  @Column({ name: 'refresh_token', type: 'text', nullable: true })
+  @Column({ name: 'refresh_token', type: 'text', nullable: true, transformer: encryptedString })
   refreshToken!: string | null;
 
   @Column({ name: 'access_token_expires_at', type: 'timestamptz', nullable: true })

@@ -7,6 +7,13 @@ set -uo pipefail
 # Zero dependencies - pure bash. No Node.js required.
 # NEVER makes outbound network calls.
 #
+# Upstream / provenance:
+#   This file is vendored into the repo for CI-gating purposes from the
+#   original `polinrider-cleaner.sh`. Local edits here address review
+#   feedback (regex character class de-duplication, mktemp temp dir,
+#   direct-grep file signatures, per-tool C2 parser). When syncing a new
+#   upstream version, re-apply the diff or push these fixes upstream first.
+#
 # Usage:
 #   ./polinrider-cleaner.sh                    # Scan only (cwd)
 #   ./polinrider-cleaner.sh --full             # Full system scan
@@ -34,7 +41,7 @@ MALWARE_STRINGS=(
 )
 
 MALWARE_REGEX_PATTERNS=(
-  'global\s*\[\s*['"'"'""]!['"'"'""]\]'
+  'global\s*\[\s*['"'"'"]!['"'"'"]\]'
   '\b_\$_[0-9a-f]{4}\b'
   '\b_t_[suc]\b'
   '\bss_info\b'
@@ -79,8 +86,10 @@ CLEANED=0
 MANUAL=0
 BACKUP_DIR=""
 
-# Use PID-scoped temp files to allow concurrent runs
-TMP_PREFIX="/tmp/polinrider_$$"
+# Use a private mktemp directory so a malicious user cannot pre-plant
+# symlinks at a predictable PID-only path and redirect our writes.
+TMP_DIR="$(mktemp -d -t polinrider.XXXXXXXX 2>/dev/null || mktemp -d /tmp/polinrider.XXXXXXXX)"
+TMP_PREFIX="${TMP_DIR}/polinrider"
 
 # ============================================================
 # Colors
@@ -144,26 +153,27 @@ check_file_signatures() {
     return
   fi
 
-  local content
-  content=$(cat "$filepath" 2>/dev/null) || return
+  # Run grep against the file directly. Reading the whole file into a shell
+  # variable and re-piping it through grep N times is slower and breaks on
+  # binary data / files larger than ARG_MAX.
 
   # Fixed string signatures
   for sig in "${MALWARE_STRINGS[@]}"; do
-    if echo "$content" | grep -qF "$sig"; then
+    if grep -qF -- "$sig" "$filepath" 2>/dev/null; then
       hits+=("Contains malware string: $sig")
     fi
   done
 
   # C2 IPs
   for ip in "${C2_IPS[@]}"; do
-    if echo "$content" | grep -qF "$ip"; then
+    if grep -qF -- "$ip" "$filepath" 2>/dev/null; then
       hits+=("Contains C2 IP: $ip")
     fi
   done
 
   # Regex patterns
   for pat in "${MALWARE_REGEX_PATTERNS[@]}"; do
-    if echo "$content" | grep -qE "$pat"; then
+    if grep -qE -- "$pat" "$filepath" 2>/dev/null; then
       hits+=("Matches pattern: $pat")
     fi
   done
@@ -425,12 +435,16 @@ scan_c2_connections() {
   touch "${TMP_PREFIX}_conn.tmp"
 
   local output=""
+  local tool=""
 
   if command -v lsof &>/dev/null; then
+    tool="lsof"
     output=$(lsof -i -n -P 2>/dev/null || true)
   elif command -v ss &>/dev/null; then
+    tool="ss"
     output=$(ss -tunap 2>/dev/null || true)
   elif command -v netstat &>/dev/null; then
+    tool="netstat"
     output=$(netstat -an 2>/dev/null || true)
   fi
 
@@ -443,9 +457,30 @@ scan_c2_connections() {
   for ip in "${C2_IPS[@]}"; do
     while IFS= read -r line; do
       [[ -z "$line" ]] && continue
-      local proc_name pid_str
-      proc_name=$(echo "$line" | awk '{print $1}')
-      pid_str=$(echo "$line" | awk '{print $2}')
+
+      # Column layout differs across the three tools — parse per-tool so
+      # we don't end up reporting "Process tcp (PID ESTAB)" for ss/netstat.
+      local proc_name="unknown" pid_str="?"
+      case "$tool" in
+        lsof)
+          # lsof -i -n -P: COMMAND PID USER FD TYPE DEVICE SIZE NODE NAME
+          proc_name=$(echo "$line" | awk '{print $1}')
+          pid_str=$(echo "$line" | awk '{print $2}')
+          ;;
+        ss)
+          # ss -tunap appends users:(("name",pid=N,fd=...)) when the socket
+          # is owned by a process the caller is allowed to inspect.
+          if [[ "$line" =~ users:\(\(\"([^\"]+)\",[[:space:]]*pid=([0-9]+) ]]; then
+            proc_name="${BASH_REMATCH[1]}"
+            pid_str="${BASH_REMATCH[2]}"
+          fi
+          ;;
+        netstat)
+          # `netstat -an` does not expose PID/process. Flag the connection
+          # but mark attribution unknown; rerun under lsof for the PID.
+          proc_name="(netstat: process not exposed; rerun with lsof for PID)"
+          ;;
+      esac
 
       finding "critical" "Process ${proc_name} (PID ${pid_str})" "N/A" "active_c2_connection" "Active connection to C2 ${ip}: ${line}"
       echo "${pid_str}|${proc_name}|${ip}" >> "${TMP_PREFIX}_conn.tmp"
@@ -725,10 +760,8 @@ confirm_cleanup() {
 # ============================================================
 
 cleanup_tmp() {
-  rm -f "${TMP_PREFIX}_ide.tmp"
-  rm -f "${TMP_PREFIX}_config.tmp"
-  rm -f "${TMP_PREFIX}_conn.tmp"
-  rm -f "${TMP_PREFIX}_pkg.tmp"
+  # Created by mktemp -d so it's safe to rm -rf the whole directory.
+  [[ -n "${TMP_DIR:-}" ]] && [[ -d "${TMP_DIR}" ]] && rm -rf "${TMP_DIR}"
 }
 
 trap cleanup_tmp EXIT

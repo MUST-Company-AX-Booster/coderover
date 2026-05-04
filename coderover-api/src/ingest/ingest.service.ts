@@ -70,7 +70,11 @@ export class IngestService {
       repoEntity = await this.repoService.ensureRepo(requestedRepo, dto.branch);
     }
 
-    const token = repoEntity.githubToken ?? undefined;
+    // Phase 2B: route through the token resolver so App installation tokens
+    // are preferred when available, falling back to OAuth → per-repo PAT →
+    // env GITHUB_TOKEN. Previously this bypassed the resolver and used the
+    // legacy `repoEntity.githubToken` PAT path only.
+    const token = (await this.tokenResolver.resolveFor(repoEntity)) || undefined;
     const repo = repoEntity.fullName;
     let branch = dto.branch?.trim() || repoEntity.branch || 'main';
     const forceReindex = dto.forceReindex ?? false;

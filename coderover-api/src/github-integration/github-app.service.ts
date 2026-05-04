@@ -19,12 +19,56 @@ import * as jwt from 'jsonwebtoken';
  * This is a scaffold — wire into PrReviewService once App credentials are
  * provisioned. See docs/runbooks/github-app-install.md (to be added).
  */
+/**
+ * Cache TTL for repo→installation lookups. Installations rarely change
+ * (a repo gains/loses the App on the order of weeks), so 5min is plenty
+ * to absorb hot-path traffic without staleness pain.
+ */
+const INSTALLATION_LOOKUP_TTL_MS = 5 * 60 * 1_000;
+
+/**
+ * Hard cap per cache. JS Map iterates in insertion order, so once we hit
+ * the cap we evict oldest-first (FIFO). Cap exists purely as a memory
+ * safety net for long-running processes that look up a high cardinality
+ * of distinct repos — the TTL would eventually let them drop, but FIFO
+ * makes that bounded rather than monotonic.
+ */
+const INSTALLATION_LOOKUP_CACHE_CAP = 500;
+
+interface CachedInstallationLookup {
+  installationId: number | null;
+  cachedAt: number;
+}
+
 @Injectable()
 export class GitHubAppService {
   private readonly logger = new Logger(GitHubAppService.name);
   private installationTokenCache = new Map<number, { token: string; expiresAt: number }>();
+  private repoInstallationCache = new Map<string, CachedInstallationLookup>();
+  private ownerInstallationCache = new Map<string, CachedInstallationLookup>();
+  // In-flight lookup dedup: if N concurrent callers ask for the same key
+  // before the first network round-trip finishes, they all await the same
+  // promise instead of firing N redundant requests at GitHub.
+  private inflightRepoLookups = new Map<string, Promise<number | null>>();
+  private inflightOwnerLookups = new Map<string, Promise<number | null>>();
 
   constructor(private readonly configService: ConfigService) {}
+
+  /**
+   * FIFO eviction helper — when a cache reaches its cap, drop the oldest
+   * entries until it's under cap. Map iterates in insertion order in JS,
+   * so the first key returned by `keys()` is the oldest. Cheap O(k) for
+   * the small k we evict.
+   */
+  private capCache<K, V>(cache: Map<K, V>, cap: number): void {
+    if (cache.size <= cap) return;
+    const evict = cache.size - cap;
+    let i = 0;
+    for (const k of cache.keys()) {
+      if (i++ >= evict) break;
+      cache.delete(k);
+    }
+  }
 
   isConfigured(): boolean {
     return Boolean(
@@ -127,5 +171,141 @@ export class GitHubAppService {
       event,
       comments: comments.map(c => ({ path: c.path, line: c.line, body: c.body })),
     });
+  }
+
+  /**
+   * Resolve which App installation has access to `owner/repo`. Returns the
+   * installation id, or null when no install covers that repo. Cached for
+   * INSTALLATION_LOOKUP_TTL_MS so repeated ingest/PR-review calls don't
+   * hit GitHub on every request.
+   *
+   * Uses the App JWT (NOT an installation token) — only the App identity
+   * itself can ask "which install owns this repo".
+   */
+  async findInstallationForRepo(owner: string, repo: string): Promise<number | null> {
+    if (!this.isConfigured()) return null;
+    const key = `${owner.toLowerCase()}/${repo.toLowerCase()}`;
+
+    // 1. Cache hit (and not expired).
+    const cached = this.repoInstallationCache.get(key);
+    if (cached && Date.now() - cached.cachedAt < INSTALLATION_LOOKUP_TTL_MS) {
+      return cached.installationId;
+    }
+
+    // 2. In-flight dedup — N concurrent callers for the same key share a
+    //    single network round-trip instead of stampeding GitHub.
+    const inflight = this.inflightRepoLookups.get(key);
+    if (inflight) return inflight;
+
+    const promise = (async () => {
+      try {
+        const installationId = await this.lookupInstallationForRepo(owner, repo);
+        this.repoInstallationCache.set(key, { installationId, cachedAt: Date.now() });
+        this.capCache(this.repoInstallationCache, INSTALLATION_LOOKUP_CACHE_CAP);
+        return installationId;
+      } finally {
+        this.inflightRepoLookups.delete(key);
+      }
+    })();
+    this.inflightRepoLookups.set(key, promise);
+    return promise;
+  }
+
+  /**
+   * Resolve which App installation covers a given account (`owner` may be
+   * a user or org). Useful when we know the account but not a specific
+   * repo — e.g. listing repos a user can ingest. Cached the same way as
+   * findInstallationForRepo.
+   */
+  async findInstallationForOwner(owner: string): Promise<number | null> {
+    if (!this.isConfigured()) return null;
+    const key = owner.toLowerCase();
+
+    const cached = this.ownerInstallationCache.get(key);
+    if (cached && Date.now() - cached.cachedAt < INSTALLATION_LOOKUP_TTL_MS) {
+      return cached.installationId;
+    }
+
+    const inflight = this.inflightOwnerLookups.get(key);
+    if (inflight) return inflight;
+
+    const promise = (async () => {
+      try {
+        const installationId = await this.lookupInstallationForOwner(owner);
+        this.ownerInstallationCache.set(key, { installationId, cachedAt: Date.now() });
+        this.capCache(this.ownerInstallationCache, INSTALLATION_LOOKUP_CACHE_CAP);
+        return installationId;
+      } finally {
+        this.inflightOwnerLookups.delete(key);
+      }
+    })();
+    this.inflightOwnerLookups.set(key, promise);
+    return promise;
+  }
+
+  /**
+   * Drop the lookup caches. Called by the installation webhook handler
+   * (when one is added) so newly-installed/uninstalled accounts aren't
+   * served stale "no install" results for up to 5 minutes.
+   *
+   * Does NOT cancel in-flight lookups — they finish naturally and write
+   * their result into the (now-empty) cache, which is fine: the result
+   * will be the still-current GitHub state at the moment of the call.
+   */
+  invalidateInstallationLookupCache(): void {
+    this.repoInstallationCache.clear();
+    this.ownerInstallationCache.clear();
+  }
+
+  /** Network call wrapped for testability — replace in unit tests. */
+  protected async lookupInstallationForRepo(
+    owner: string,
+    repo: string,
+  ): Promise<number | null> {
+    try {
+      const appJwt = this.signAppJwt();
+      const octokit = new Octokit({ auth: appJwt });
+      const res = await octokit.request('GET /repos/{owner}/{repo}/installation', {
+        owner,
+        repo,
+      });
+      return (res.data as { id: number }).id;
+    } catch (err) {
+      // 404 = "App not installed on this repo" — not an error worth alerting on.
+      const status = (err as { status?: number }).status;
+      if (status === 404) return null;
+      this.logger.warn(
+        `findInstallationForRepo(${owner}/${repo}) failed: ${(err as Error).message}`,
+      );
+      return null;
+    }
+  }
+
+  /** Network call wrapped for testability — replace in unit tests. */
+  protected async lookupInstallationForOwner(owner: string): Promise<number | null> {
+    try {
+      const appJwt = this.signAppJwt();
+      const octokit = new Octokit({ auth: appJwt });
+      // Org and user installations land at different endpoints; we try org
+      // first (most common for self-hosted CodeRover deploys) and fall back
+      // to user.
+      try {
+        const res = await octokit.request('GET /orgs/{org}/installation', { org: owner });
+        return (res.data as { id: number }).id;
+      } catch (orgErr) {
+        if ((orgErr as { status?: number }).status !== 404) throw orgErr;
+        const res = await octokit.request('GET /users/{username}/installation', {
+          username: owner,
+        });
+        return (res.data as { id: number }).id;
+      }
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status === 404) return null;
+      this.logger.warn(
+        `findInstallationForOwner(${owner}) failed: ${(err as Error).message}`,
+      );
+      return null;
+    }
   }
 }

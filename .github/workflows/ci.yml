@@ -78,6 +78,33 @@ jobs:
         with:
           extra_args: --results=verified,unknown
 
+  dependency-review:
+    name: deps — dependency review (PR diff)
+    # Only meaningful on PRs — the action diffs base..head against the
+    # GitHub Advisory Database and gates *newly introduced* vulnerable
+    # deps. Existing vulnerabilities in main are surfaced separately by
+    # Dependabot; this job stays out of their way and won't block PRs
+    # whose only sin is touching files near a pre-existing vuln.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          # Fail the job (and block merge once required) on any HIGH or
+          # CRITICAL CVE introduced by this PR. Moderate is informational.
+          fail-on-severity: high
+          # Posts a summary comment on the PR when the gate fails so the
+          # author sees the offending package + advisory inline.
+          comment-summary-in-pr: on-failure
+          # license-check intentionally OFF for now — adds noise without
+          # an allow-list. Re-enable in a follow-up with `allow-licenses`
+          # set to e.g. MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC.
+
   supply-chain-scan:
     name: supply-chain — polinrider
     runs-on: ubuntu-latest

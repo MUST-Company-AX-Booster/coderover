@@ -118,10 +118,24 @@ export const CREDENTIAL_PATTERNS: ReadonlyArray<CredentialPattern> = [
   },
 
   // --- Private keys (PEM blocks) ---
+  // Match the WHOLE block from BEGIN to END so the base64-encoded key
+  // material between the markers is scrubbed too — the header alone is
+  // not what an attacker needs.
+  //
+  // Lazy `*?` quantifier so two PEM blocks in the same chunk don't
+  // collapse into one giant match across both. The `[\s\S]` class
+  // matches across newlines (no `s` flag for older runtime parity).
+  //
+  // Known limitation: a PEM block that straddles two chunks — header in
+  // chunk N, footer in chunk N+1 — is NOT caught by either chunk's
+  // regex. A file-level pre-pass that elides PEM-bearing files entirely
+  // is the right complement; tracked as a follow-up since file-level
+  // redaction reshuffles line counts and would break the chunker's
+  // line tracking without a careful rewrite.
   {
     type: 'PRIVATE_KEY_PEM',
-    description: 'PEM-formatted private key header (any algorithm)',
-    regex: /-----BEGIN [A-Z ]*PRIVATE KEY-----/g,
+    description: 'PEM-formatted private key block (BEGIN..END, any algorithm)',
+    regex: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
   },
 ];
 
@@ -154,4 +168,104 @@ export function countCredentialMatches(text: string): Record<string, number> {
     if (matches && matches.length > 0) counts[type] = matches.length;
   }
   return counts;
+}
+
+// ============================================================
+// Metadata-aware redactors (Phase 3C, addressing #58 review L241)
+// ============================================================
+//
+// `chunkText` and `rawText` are not the only paths into pgvector — the
+// chunker also persists structured AST metadata (symbol/method/call-site
+// names) into JSONB columns. A credential-shaped identifier in source
+// (rare but possible: `const AKIA1234567890ABCDE = ...`) would survive
+// into those columns unless we scrub the metadata too.
+//
+// The interfaces are imported from ast.service in the chunker; here we
+// keep these helpers structural to avoid a circular import.
+
+/** Pure helper — apply `redactCredentials` to every string in an array. */
+export function redactStringList(list: ReadonlyArray<string>): string[] {
+  return list.map(s => (typeof s === 'string' ? redactCredentials(s) : s));
+}
+
+interface SymbolLike {
+  name: string;
+  decorators?: string[];
+}
+export function redactSymbols<T extends SymbolLike>(symbols: ReadonlyArray<T>): T[] {
+  return symbols.map(
+    s =>
+      ({
+        ...s,
+        name: redactCredentials(s.name),
+        decorators: s.decorators ? redactStringList(s.decorators) : s.decorators,
+      }) as T,
+  );
+}
+
+interface ImportLike {
+  source: string;
+  names: string[];
+  isRelative: boolean;
+}
+export function redactImports<T extends ImportLike>(imports: ReadonlyArray<T>): T[] {
+  return imports.map(
+    i =>
+      ({
+        ...i,
+        source: redactCredentials(i.source),
+        names: redactStringList(i.names),
+      }) as T,
+  );
+}
+
+interface MethodLike {
+  name: string;
+  className: string;
+  parameters: string[];
+}
+export function redactMethods<T extends MethodLike>(methods: ReadonlyArray<T>): T[] {
+  return methods.map(
+    m =>
+      ({
+        ...m,
+        name: redactCredentials(m.name),
+        className: redactCredentials(m.className),
+        parameters: redactStringList(m.parameters),
+      }) as T,
+  );
+}
+
+interface CallSiteLike {
+  callerName: string;
+  calleeName: string;
+  calleeQualified: string;
+}
+export function redactCallSites<T extends CallSiteLike>(sites: ReadonlyArray<T>): T[] {
+  return sites.map(
+    c =>
+      ({
+        ...c,
+        callerName: redactCredentials(c.callerName),
+        calleeName: redactCredentials(c.calleeName),
+        calleeQualified: redactCredentials(c.calleeQualified),
+      }) as T,
+  );
+}
+
+interface InheritanceLike {
+  className: string;
+  extends: string | null;
+  implements: string[];
+}
+export function redactInheritance<T extends InheritanceLike>(items: ReadonlyArray<T>): T[] {
+  return items.map(
+    i =>
+      ({
+        ...i,
+        className: redactCredentials(i.className),
+        extends: i.extends ? redactCredentials(i.extends) : i.extends,
+        implements: redactStringList(i.implements),
+      }) as T,
+  );
 }

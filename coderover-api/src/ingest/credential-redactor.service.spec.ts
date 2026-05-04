@@ -64,13 +64,13 @@ describe('redactCredentials', () => {
         'SLACK_TOKEN',
       ],
       [
-        'PEM private key header',
-        '-----BEGIN RSA PRIVATE KEY-----',
+        'PEM private key block (RSA, full BEGIN..END)',
+        '-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAA==\n-----END RSA PRIVATE KEY-----',
         'PRIVATE_KEY_PEM',
       ],
       [
-        'PEM private key (no algo)',
-        '-----BEGIN PRIVATE KEY-----',
+        'PEM private key block (no algo, full BEGIN..END)',
+        '-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkq==\n-----END PRIVATE KEY-----',
         'PRIVATE_KEY_PEM',
       ],
     ];
@@ -140,6 +140,22 @@ describe('redactCredentials', () => {
       const out = redactCredentials(input);
       expect(out).toBe('// [REDACTED:AWS_ACCESS_KEY] — replaced\nconst x = 1;\n');
     });
+
+    it('PEM lazy quantifier — two adjacent blocks redact independently', () => {
+      // The regex uses `*?` so two separate PEM blocks must not collapse
+      // into a single span across both.
+      const input =
+        '-----BEGIN PRIVATE KEY-----\nKEY1\n-----END PRIVATE KEY-----\n' +
+        'middle bytes\n' +
+        '-----BEGIN RSA PRIVATE KEY-----\nKEY2\n-----END RSA PRIVATE KEY-----';
+      const out = redactCredentials(input);
+      // Two replacement envelopes, the "middle bytes" line preserved verbatim.
+      expect(out).toBe(
+        '[REDACTED:PRIVATE_KEY_PEM]\nmiddle bytes\n[REDACTED:PRIVATE_KEY_PEM]',
+      );
+      expect(out).not.toContain('KEY1');
+      expect(out).not.toContain('KEY2');
+    });
   });
 });
 
@@ -170,5 +186,112 @@ describe('CREDENTIAL_PATTERNS', () => {
   it('every pattern has unique type identifiers (no duplicate REDACTED labels)', () => {
     const types = CREDENTIAL_PATTERNS.map(p => p.type);
     expect(new Set(types).size).toBe(types.length);
+  });
+});
+
+// Imports for the metadata-aware redactors.
+import {
+  redactCallSites,
+  redactImports,
+  redactInheritance,
+  redactMethods,
+  redactStringList,
+  redactSymbols,
+} from './credential-redactor.service';
+
+describe('metadata-aware redactors (Phase 3C, chunker JSONB columns)', () => {
+  it('redactStringList scrubs every string in an array', () => {
+    expect(
+      redactStringList(['safe', 'AKIAIOSFODNN7EXAMPLE', 'also-safe']),
+    ).toEqual(['safe', '[REDACTED:AWS_ACCESS_KEY]', 'also-safe']);
+  });
+
+  it('redactSymbols scrubs name + decorators, preserves other fields', () => {
+    const input = [
+      {
+        name: 'AKIAIOSFODNN7EXAMPLE',
+        kind: 'const',
+        exported: true,
+        decorators: ['Injectable', 'AKIAIOSFODNN7EXAMPLE'],
+        lineStart: 10,
+        lineEnd: 12,
+      },
+    ];
+    const out = redactSymbols(input);
+    expect(out[0].name).toBe('[REDACTED:AWS_ACCESS_KEY]');
+    expect(out[0].decorators).toEqual(['Injectable', '[REDACTED:AWS_ACCESS_KEY]']);
+    expect(out[0].kind).toBe('const');
+    expect(out[0].lineStart).toBe(10);
+    expect(out[0].lineEnd).toBe(12);
+    expect(out[0].exported).toBe(true);
+  });
+
+  it('redactImports scrubs source + names, preserves isRelative', () => {
+    const input = [{ source: '../akia', names: ['AKIAIOSFODNN7EXAMPLE', 'safe'], isRelative: true }];
+    const out = redactImports(input);
+    expect(out[0].names).toEqual(['[REDACTED:AWS_ACCESS_KEY]', 'safe']);
+    expect(out[0].isRelative).toBe(true);
+  });
+
+  it('redactMethods scrubs name + className + parameters', () => {
+    const input = [
+      {
+        name: 'ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        className: 'Service',
+        startLine: 1,
+        endLine: 5,
+        parameters: ['x', 'AKIAIOSFODNN7EXAMPLE'],
+      },
+    ];
+    const out = redactMethods(input);
+    expect(out[0].name).toBe('[REDACTED:GITHUB_PAT]');
+    expect(out[0].className).toBe('Service');
+    expect(out[0].parameters).toEqual(['x', '[REDACTED:AWS_ACCESS_KEY]']);
+    expect(out[0].startLine).toBe(1);
+    expect(out[0].endLine).toBe(5);
+  });
+
+  it('redactCallSites scrubs all three name fields', () => {
+    const input = [
+      {
+        callerName: 'caller',
+        callerKind: 'function' as const,
+        calleeName: 'AKIAIOSFODNN7EXAMPLE',
+        calleeQualified: 'utils.AKIAIOSFODNN7EXAMPLE',
+        line: 42,
+      },
+    ];
+    const out = redactCallSites(input);
+    expect(out[0].calleeName).toBe('[REDACTED:AWS_ACCESS_KEY]');
+    expect(out[0].calleeQualified).toBe('utils.[REDACTED:AWS_ACCESS_KEY]');
+    expect(out[0].callerName).toBe('caller');
+    expect(out[0].line).toBe(42);
+    expect(out[0].callerKind).toBe('function');
+  });
+
+  it('redactInheritance scrubs className + extends + implements', () => {
+    const input = [
+      {
+        className: 'Child',
+        extends: 'AKIAIOSFODNN7EXAMPLE',
+        implements: ['IFoo', 'AKIAIOSFODNN7EXAMPLE'],
+      },
+    ];
+    const out = redactInheritance(input);
+    expect(out[0].extends).toBe('[REDACTED:AWS_ACCESS_KEY]');
+    expect(out[0].implements).toEqual(['IFoo', '[REDACTED:AWS_ACCESS_KEY]']);
+    expect(out[0].className).toBe('Child');
+  });
+
+  it('redactInheritance preserves null extends', () => {
+    const out = redactInheritance([{ className: 'C', extends: null, implements: [] }]);
+    expect(out[0].extends).toBeNull();
+  });
+
+  it('all helpers leave non-credential strings exactly alone', () => {
+    const symbols = [
+      { name: 'BookingService', kind: 'class' as const, exported: true, decorators: ['Injectable'], lineStart: 1, lineEnd: 50 },
+    ];
+    expect(redactSymbols(symbols)).toEqual(symbols);
   });
 });

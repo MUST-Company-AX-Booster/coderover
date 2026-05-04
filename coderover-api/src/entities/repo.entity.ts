@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { encryptedString } from '../common/crypto/encrypted-string.transformer';
 
 @Entity('repos')
 export class Repo {
@@ -20,7 +21,11 @@ export class Repo {
   @Column({ name: 'full_name', unique: true })
   fullName!: string;
 
-  @Column({ name: 'github_token', nullable: true })
+  // Phase 2A (Zero Trust): legacy per-repo PAT, AES-256-GCM encrypted at
+  // rest via the `encryptedString` transformer. Reads return plaintext,
+  // writes encrypt before insert/update. Pre-existing plaintext rows pass
+  // through unchanged on read and are re-encrypted on next save.
+  @Column({ name: 'github_token', nullable: true, transformer: encryptedString })
   githubToken!: string;
 
   @Column({ name: 'branch', default: 'main' })

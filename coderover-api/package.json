@@ -106,7 +106,10 @@
     "glob": "^10.5.0",
     "tmp": "^0.2.4",
     "webpack": "^5.104.1",
-    "file-type": "^21.3.2"
+    "file-type": "^21.3.2",
+    "@angular-devkit/core": {
+      "picomatch": "^4.0.4"
+    }
   },
   "jest": {
     "moduleFileExtensions": [

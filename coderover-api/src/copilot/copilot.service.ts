@@ -12,6 +12,8 @@ import { DataSource } from 'typeorm';
 import { TokenCapService } from '../observability/token-cap.service';
 import { currentOrgId } from '../organizations/org-context';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
+import { LLMKillSwitchService } from '../llm-guard/llm-kill-switch.service';
+import { LLMResponseValidatorService } from '../llm-guard/llm-response-validator.service';
 
 const otelTracer = trace.getTracer('coderover.copilot');
 import {
@@ -38,6 +40,10 @@ export class CopilotService {
     private readonly repoService: RepoService,
     private readonly dataSource: DataSource,
     private readonly tokenCap: TokenCapService,
+    // Phase 4A: kill switch is checked before EVERY outbound LLM call,
+    // response validator scrubs accumulated content before persistence.
+    private readonly llmKillSwitch: LLMKillSwitchService,
+    private readonly llmValidator: LLMResponseValidatorService,
   ) {
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
     const configuredBaseURL = this.configService.get<string>('OPENAI_BASE_URL');
@@ -140,8 +146,18 @@ export class CopilotService {
       const messages = await this.buildMessages(session.id, dto.message, searchResults, systemPrompt);
 
       // 6. Stream with agentic tool-call loop
-      const { fullContent, toolCalls, metrics } = await this.streamWithToolLoop(messages, res);
+      const { fullContent: rawFullContent, toolCalls, metrics } = await this.streamWithToolLoop(messages, res);
       telemetry = metrics;
+
+      // 6a. Phase 4A: validate + sanitize the LLM response before
+      // persistence. Catches credential patterns the model may have
+      // surfaced from context (legitimate or hallucinated) and length-caps
+      // runaway output. We persist the sanitized version so any future
+      // retrieval (chat history) returns the safe text. The streaming
+      // SSE chunks already went out raw — that's a Phase-4 stretch
+      // (chunk-level sanitization without breaking pattern boundaries).
+      const validation = this.llmValidator.validate(rawFullContent);
+      const fullContent = validation.sanitized;
 
       // 7. Send sources event
       if (searchResults.length > 0) {
@@ -355,6 +371,11 @@ export class CopilotService {
           'coderover.org': orgId ?? 'unknown',
         },
       });
+
+      // Phase 4A: gate every outbound LLM call. Throws 503 immediately
+      // if an operator has engaged LLM_KILL_SWITCH — request never
+      // leaves the api process.
+      this.llmKillSwitch.assertNotKilled();
 
       const stream = await this.openai.chat.completions.create({
         model: this.chatModel,

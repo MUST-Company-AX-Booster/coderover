@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import OpenAI from 'openai';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'crypto';
 import { ChunkResult } from './chunker.service';
 import { createLocalEmbeddings, resolveLlmBaseUrl, resolveLlmProvider } from '../config/openai.config';
 import { ConfidenceTaggerService } from '../graph/confidence-tagger.service';

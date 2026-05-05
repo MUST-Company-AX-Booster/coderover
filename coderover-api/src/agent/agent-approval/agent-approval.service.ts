@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AgentApproval, AgentApprovalStatus } from '../../entities/agent-approval.entity';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'crypto';
 
 @Injectable()
 export class AgentApprovalService {

@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { Repository } from 'typeorm';
-import { v4 as uuid } from 'uuid';
+import { randomUUID } from 'crypto';
 import { RevokedToken, TokenKind } from '../entities/revoked-token.entity';
 import { JwtPayload } from './auth.service';
 import { Role } from './roles.enum';
@@ -79,7 +79,7 @@ export class TokenRevocationService {
       throw new BadRequestException(`Invalid token kind: ${params.kind}`);
     }
 
-    const id = uuid();
+    const id = randomUUID();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
 

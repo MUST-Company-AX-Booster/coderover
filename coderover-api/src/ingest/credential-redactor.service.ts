@@ -188,6 +188,31 @@ export function redactStringList(list: ReadonlyArray<string>): string[] {
   return list.map(s => (typeof s === 'string' ? redactCredentials(s) : s));
 }
 
+/**
+ * Recursively walk a JSON-shaped value (string / number / boolean / null
+ * / array / object) and run `redactCredentials` against every string.
+ * Numbers, booleans, null, undefined pass through unchanged.
+ *
+ * Used for sanitizing MCP tool-call results (Phase 4A, copilot) where
+ * the result tree may contain string values from arbitrary tools (file
+ * readers, db queries, repo searches) that could carry credentials.
+ *
+ * Returns a freshly-constructed value tree — does not mutate input.
+ */
+export function redactJSONValue(value: unknown): unknown {
+  if (typeof value === 'string') return redactCredentials(value);
+  if (Array.isArray(value)) return value.map(redactJSONValue);
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = redactJSONValue(v);
+    }
+    return out;
+  }
+  // numbers, booleans, null, undefined — return as-is
+  return value;
+}
+
 interface SymbolLike {
   name: string;
   decorators?: string[];

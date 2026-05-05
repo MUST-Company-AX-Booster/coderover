@@ -194,10 +194,78 @@ import {
   redactCallSites,
   redactImports,
   redactInheritance,
+  redactJSONValue,
   redactMethods,
   redactStringList,
   redactSymbols,
 } from './credential-redactor.service';
+
+describe('redactJSONValue (Phase 4A — tool-result trees)', () => {
+  it('redacts a credential at the top level (string)', () => {
+    expect(redactJSONValue('AKIAIOSFODNN7EXAMPLE')).toBe('[REDACTED:AWS_ACCESS_KEY]');
+  });
+
+  it('passes primitives through unchanged', () => {
+    expect(redactJSONValue(42)).toBe(42);
+    expect(redactJSONValue(true)).toBe(true);
+    expect(redactJSONValue(false)).toBe(false);
+    expect(redactJSONValue(null)).toBeNull();
+    expect(redactJSONValue(undefined)).toBeUndefined();
+  });
+
+  it('redacts every string in a flat object', () => {
+    const out = redactJSONValue({
+      a: 'safe',
+      b: 'AKIAIOSFODNN7EXAMPLE',
+      c: 1,
+      d: true,
+    }) as Record<string, unknown>;
+    expect(out).toEqual({
+      a: 'safe',
+      b: '[REDACTED:AWS_ACCESS_KEY]',
+      c: 1,
+      d: true,
+    });
+  });
+
+  it('redacts strings in nested arrays + objects', () => {
+    const tree = {
+      files: [
+        {
+          path: 'src/secrets.ts',
+          content: 'const aws = "AKIAIOSFODNN7EXAMPLE";',
+          lines: 1,
+        },
+        {
+          path: 'src/auth.ts',
+          content: 'export const TOKEN = "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";',
+          lines: 1,
+        },
+      ],
+      meta: { count: 2, source: 'mcp.read_files' },
+    };
+    const out = redactJSONValue(tree) as typeof tree;
+    expect(out.files[0].content).toBe('const aws = "[REDACTED:AWS_ACCESS_KEY]";');
+    expect(out.files[1].content).toContain('[REDACTED:GITHUB_PAT]');
+    expect(out.files[0].lines).toBe(1);
+    expect(out.meta).toEqual({ count: 2, source: 'mcp.read_files' });
+  });
+
+  it('does not mutate the input tree', () => {
+    const input = {
+      content: 'const aws = "AKIAIOSFODNN7EXAMPLE";',
+      kids: [{ leaf: 'AKIAIOSFODNN7EXAMPLE' }],
+    };
+    const snapshot = JSON.parse(JSON.stringify(input));
+    redactJSONValue(input);
+    expect(input).toEqual(snapshot);
+  });
+
+  it('handles arrays at the top level', () => {
+    const out = redactJSONValue(['safe', 'AKIAIOSFODNN7EXAMPLE', 42]);
+    expect(out).toEqual(['safe', '[REDACTED:AWS_ACCESS_KEY]', 42]);
+  });
+});
 
 describe('metadata-aware redactors (Phase 3C, chunker JSONB columns)', () => {
   it('redactStringList scrubs every string in an array', () => {

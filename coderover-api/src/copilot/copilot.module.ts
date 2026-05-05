@@ -8,6 +8,7 @@ import { McpModule } from '../mcp/mcp.module';
 import { RepoModule } from '../repo/repo.module';
 import { ObservabilityModule } from '../observability/observability.module';
 import { GraphModule } from '../graph/graph.module';
+import { LLMGuardModule } from '../llm-guard/llm-guard.module';
 import { CopilotController } from './copilot.controller';
 import { CopilotService } from './copilot.service';
 import { SessionService } from './session.service';
@@ -20,6 +21,7 @@ import { SessionService } from './session.service';
     RepoModule,
     ObservabilityModule,
     GraphModule,
+    LLMGuardModule,
   ],
   controllers: [CopilotController],
   providers: [CopilotService, SessionService],

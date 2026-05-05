@@ -38,10 +38,24 @@ services:
       POSTGRES_DB: coderover
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      # Phase 5 (Zero Trust): bootstrap-roles.sh reads these on FIRST
+      # init of a fresh pgdata volume to create the coderover_app +
+      # coderover_migrate roles. Populated from the host's .env so
+      # secrets aren't committed; the bootstrap SQL asserts both are
+      # set (length >= 12) and aborts otherwise.
+      CODEROVER_APP_PASSWORD: ${CODEROVER_APP_PASSWORD}
+      CODEROVER_MIGRATE_PASSWORD: ${CODEROVER_MIGRATE_PASSWORD}
     ports:
       - '127.0.0.1:5434:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Postgres' official entrypoint runs every script in
+      # /docker-entrypoint-initdb.d/ on first DB init (read: empty
+      # pgdata volume). The .sh wrapper invokes psql -v with the
+      # passwords from env; the .sql alongside it is the actual
+      # CREATE ROLE / GRANT script.
+      - ./sql/bootstrap-roles.sh:/docker-entrypoint-initdb.d/00-bootstrap-roles.sh:ro
+      - ./sql/bootstrap-roles.sql:/docker-entrypoint-initdb.d/bootstrap-roles.sql:ro
     networks:
       - db-net
 

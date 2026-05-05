@@ -77,6 +77,36 @@ describe('LLMAuditService', () => {
     expect(row.error).toBe('LLM Kill Switch Engaged');
   });
 
+  it('distinguishes empty-string response (valid) from null response (no response)', async () => {
+    const { repo, insert } = makeRepo();
+    const svc = new LLMAuditService(repo);
+
+    // Empty string is a valid response — hash + chars must be set.
+    await svc.record({
+      callSite: 'copilot.chat',
+      provider: 'openai',
+      model: 'gpt-4o',
+      promptText: 'p',
+      responseText: '',
+    });
+    const emptyRow = insert.mock.calls[0][0];
+    expect(emptyRow.responseHash).toBe(sha256(''));
+    expect(emptyRow.responseChars).toBe(0);
+
+    // Null/omitted means no response (kill switch, error, etc.).
+    insert.mockClear();
+    await svc.record({
+      callSite: 'copilot.chat',
+      provider: 'openai',
+      model: 'gpt-4o',
+      promptText: 'p',
+      responseText: null,
+    });
+    const nullRow = insert.mock.calls[0][0];
+    expect(nullRow.responseHash).toBeNull();
+    expect(nullRow.responseChars).toBeNull();
+  });
+
   it('passes redactions tally through unchanged', async () => {
     const { repo, insert } = makeRepo();
     const svc = new LLMAuditService(repo);

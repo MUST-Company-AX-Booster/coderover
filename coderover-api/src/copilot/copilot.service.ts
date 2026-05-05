@@ -79,6 +79,10 @@ export class CopilotService {
 
     const startedAt = new Date();
     let sessionId: string | null = null;
+    // Hoisted out of the inner try block so the outer catch (Phase 4B
+    // audit on error path) can attribute the failed call to a user
+    // when the session was resolved before the error fired.
+    let userId: string | null = null;
     let primaryRepoId: string | null = null;
     let telemetry: {
       firstTokenAt: Date | null;
@@ -100,6 +104,7 @@ export class CopilotService {
         session = await this.sessionService.createSession('anonymous');
       }
       sessionId = session.id;
+      userId = session.userId ?? null;
 
       // Resolve effective repoIds
       const effectiveRepoIds = dto.repoIds ?? (dto.repoId ? [dto.repoId] : session.repoIds ?? []);
@@ -170,7 +175,7 @@ export class CopilotService {
       // post-validator redaction tally for Phase 4C anomaly alerts.
       void this.llmAudit.record({
         orgId: currentOrgId() ?? null,
-        userId: session.userId ?? null,
+        userId,
         callSite: 'copilot.chat',
         provider: this.llmProvider,
         model: this.chatModel,
@@ -256,9 +261,11 @@ export class CopilotService {
       // Phase 4B: audit failures + kill-switch blocks too. The
       // killSwitchBlocked flag lets Phase 4C alerts distinguish
       // operator-engaged blackouts from upstream provider failures.
+      // userId is hoisted, so it carries the resolved user when the
+      // session lookup happened before the error, or null otherwise.
       void this.llmAudit.record({
         orgId: currentOrgId() ?? null,
-        userId: null, // session may not be set if error fired before session lookup
+        userId,
         callSite: 'copilot.chat',
         provider: this.llmProvider,
         model: this.chatModel,

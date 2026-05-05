@@ -75,7 +75,13 @@ export class LLMAuditService {
   async record(input: AuditRecordInput): Promise<void> {
     try {
       const promptHash = sha256(input.promptText);
-      const responseHash = input.responseText ? sha256(input.responseText) : null;
+      // Distinguish "no response" (null/undefined → null hash, null chars)
+      // from "empty response" (`""` → hash of empty string, 0 chars).
+      // An empty string is still a valid response and should be recorded
+      // as such — only a literal null/undefined means the call never
+      // produced a response (kill switch, error, etc.).
+      const responseHash = input.responseText != null ? sha256(input.responseText) : null;
+      const responseChars = input.responseText != null ? input.responseText.length : null;
 
       await this.repo.insert({
         orgId: input.orgId ?? null,
@@ -86,7 +92,7 @@ export class LLMAuditService {
         promptHash,
         responseHash,
         promptChars: input.promptText.length,
-        responseChars: input.responseText ? input.responseText.length : null,
+        responseChars,
         promptTokens: input.promptTokens ?? null,
         completionTokens: input.completionTokens ?? null,
         totalTokens: input.totalTokens ?? null,

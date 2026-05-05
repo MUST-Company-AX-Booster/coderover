@@ -26,6 +26,22 @@ export const validationSchema = Joi.object({
   DATABASE_USER: Joi.string().required(),
   DATABASE_PASSWORD: Joi.string().required(),
 
+  // Phase 5 (Zero Trust): dedicated migrate user. When set, boot-time
+  // auto-migrate (and `npm run migration:run`) connect as this user
+  // instead of DATABASE_USER. Lets DATABASE_USER stay on the
+  // lower-privileged `coderover_app` role which cannot DDL. Both
+  // optional: falling back to DATABASE_USER preserves pre-Phase-5
+  // dev/CI behavior. Required-together when one is set.
+  DATABASE_MIGRATE_USER: Joi.string().optional().allow(''),
+  DATABASE_MIGRATE_PASSWORD: Joi.string()
+    .optional()
+    .allow('')
+    .when('DATABASE_MIGRATE_USER', {
+      is: Joi.string().required().min(1),
+      then: Joi.string().required().min(1),
+    }),
+  TYPEORM_MIGRATIONS_RUN: Joi.string().valid('true', 'false').optional(),
+
   REDIS_HOST: Joi.string().default('localhost'),
   REDIS_PORT: Joi.number().default(6380),
   MEMGRAPH_URI: Joi.string().default('bolt://localhost:7687'),

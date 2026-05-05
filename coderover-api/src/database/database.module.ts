@@ -1,7 +1,8 @@
-import { Module } from '@nestjs/common';
+import { Logger, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { join } from 'path';
+import { DataSource } from 'typeorm';
 import { CodeChunk } from '../entities/code-chunk.entity';
 import { ChatSession } from '../entities/chat-session.entity';
 import { ChatMessage } from '../entities/chat-message.entity';
@@ -31,54 +32,128 @@ import { RevokedToken } from '../entities/revoked-token.entity';
 import { CacheEntry } from '../entities/cache-entry.entity';
 import { LLMAuditLog } from '../entities/llm-audit-log.entity';
 
+const logger = new Logger('DatabaseModule');
+
+const ENTITIES = [
+  CodeChunk,
+  ChatSession,
+  ChatMessage,
+  PrReview,
+  SyncLog,
+  Repo,
+  WebhookEvent,
+  ContextArtifact,
+  SystemSetting,
+  SettingAudit,
+  GithubConnection,
+  CodeMethod,
+  CodeCall,
+  CodeInheritance,
+  AgentRun,
+  AgentApproval,
+  AgentMemory,
+  AgentRule,
+  User,
+  Organization,
+  OrgMembership,
+  RagCitation,
+  PrReviewFinding,
+  EdgeProducerAudit,
+  GraphMigration,
+  RevokedToken,
+  CacheEntry,
+  LLMAuditLog,
+];
+
+const MIGRATIONS_GLOB = join(__dirname, 'migrations', '*{.ts,.js}');
+
+/**
+ * Phase 5 (Zero Trust): when boot-time auto-migrate is enabled AND a
+ * separate migrate user is configured, open a one-shot DataSource as
+ * `coderover_migrate`, run any pending migrations, then close it. The
+ * runtime DataSource (returned to TypeORM below) connects as the
+ * lower-privileged `coderover_app` and CANNOT do DDL.
+ *
+ * Falls back gracefully when DATABASE_MIGRATE_USER is unset — runs
+ * migrations as the runtime user, matching pre-Phase-5 behavior. This
+ * keeps existing dev/CI setups working without an env change while
+ * giving operators a clean path to opt into role separation.
+ */
+async function runPendingMigrations(configService: ConfigService): Promise<void> {
+  const migrateUser =
+    configService.get<string>('DATABASE_MIGRATE_USER') ||
+    configService.get<string>('DATABASE_USER');
+  const migratePassword =
+    configService.get<string>('DATABASE_MIGRATE_PASSWORD') ||
+    configService.get<string>('DATABASE_PASSWORD');
+
+  const usingDedicatedMigrateUser =
+    !!configService.get<string>('DATABASE_MIGRATE_USER');
+
+  logger.log(
+    `Running migrations as ${usingDedicatedMigrateUser ? `'${migrateUser}' (dedicated)` : `'${migrateUser}' (shared with runtime)`}`,
+  );
+
+  // Pass the same ENTITIES list to the migrate DataSource. Today every
+  // migration is pure `queryRunner.query()` SQL, so an empty array
+  // would technically work, but a backfill migration that calls
+  // `queryRunner.manager.getRepository(SomeEntity)` would crash at
+  // runtime with a confusing "No metadata for X was found" error. The
+  // metadata-loading cost at boot is negligible compared to the
+  // debug-time cost of that failure mode.
+  const migrateDataSource = new DataSource({
+    type: 'postgres',
+    host: configService.get<string>('DATABASE_HOST'),
+    port: configService.get<number>('DATABASE_PORT'),
+    database: configService.get<string>('DATABASE_NAME'),
+    username: migrateUser,
+    password: migratePassword,
+    entities: ENTITIES,
+    migrations: [MIGRATIONS_GLOB],
+    synchronize: false,
+    logging: configService.get<string>('NODE_ENV') === 'development',
+  });
+
+  await migrateDataSource.initialize();
+  try {
+    await migrateDataSource.runMigrations();
+  } finally {
+    await migrateDataSource.destroy();
+  }
+}
+
 @Module({
   imports: [
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        type: 'postgres',
-        host: configService.get<string>('DATABASE_HOST'),
-        port: configService.get<number>('DATABASE_PORT'),
-        database: configService.get<string>('DATABASE_NAME'),
-        username: configService.get<string>('DATABASE_USER'),
-        password: configService.get<string>('DATABASE_PASSWORD'),
-        entities: [
-          CodeChunk,
-          ChatSession,
-          ChatMessage,
-          PrReview,
-          SyncLog,
-          Repo,
-          WebhookEvent,
-          ContextArtifact,
-          SystemSetting,
-          SettingAudit,
-          GithubConnection,
-          CodeMethod,
-          CodeCall,
-          CodeInheritance,
-          AgentRun,
-          AgentApproval,
-          AgentMemory,
-          AgentRule,
-          User,
-          Organization,
-          OrgMembership,
-          RagCitation,
-          PrReviewFinding,
-          EdgeProducerAudit,
-          GraphMigration,
-          RevokedToken,
-          CacheEntry,
-          LLMAuditLog,
-        ],
-        migrations: [join(__dirname, '..', 'database', 'migrations', '*{.ts,.js}')],
-        migrationsRun:
+      useFactory: async (configService: ConfigService) => {
+        const runMigrationsOnBoot =
           configService.get<string>('TYPEORM_MIGRATIONS_RUN') === 'true' ||
-          configService.get<string>('NODE_ENV') === 'development',
-        synchronize: false,
-        logging: configService.get<string>('NODE_ENV') === 'development',
-      }),
+          configService.get<string>('NODE_ENV') === 'development';
+
+        if (runMigrationsOnBoot) {
+          await runPendingMigrations(configService);
+        }
+
+        return {
+          type: 'postgres',
+          host: configService.get<string>('DATABASE_HOST'),
+          port: configService.get<number>('DATABASE_PORT'),
+          database: configService.get<string>('DATABASE_NAME'),
+          username: configService.get<string>('DATABASE_USER'),
+          password: configService.get<string>('DATABASE_PASSWORD'),
+          entities: ENTITIES,
+          // Migrations are run by `runPendingMigrations` above as the
+          // dedicated migrate user (when configured). The runtime
+          // connection — coderover_app — must NOT have migrationsRun
+          // enabled, both because it lacks DDL privileges and because
+          // running migrations twice on boot is wasteful.
+          migrations: [MIGRATIONS_GLOB],
+          migrationsRun: false,
+          synchronize: false,
+          logging: configService.get<string>('NODE_ENV') === 'development',
+        };
+      },
     }),
   ],
 })

@@ -12,7 +12,8 @@ import { DataSource } from 'typeorm';
 import { TokenCapService } from '../observability/token-cap.service';
 import { currentOrgId } from '../organizations/org-context';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
-import { LLMKillSwitchService } from '../llm-guard/llm-kill-switch.service';
+import { LLMAuditService } from '../llm-guard/llm-audit.service';
+import { LLMKillSwitchError, LLMKillSwitchService } from '../llm-guard/llm-kill-switch.service';
 import { LLMResponseValidatorService } from '../llm-guard/llm-response-validator.service';
 import { redactCredentials, redactJSONValue } from '../ingest/credential-redactor.service';
 
@@ -45,6 +46,9 @@ export class CopilotService {
     // response validator scrubs accumulated content before persistence.
     private readonly llmKillSwitch: LLMKillSwitchService,
     private readonly llmValidator: LLMResponseValidatorService,
+    // Phase 4B: per-call audit. Fire-and-forget — never blocks the
+    // user request. Each call writes one row to llm_audit_log.
+    private readonly llmAudit: LLMAuditService,
   ) {
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
     const configuredBaseURL = this.configService.get<string>('OPENAI_BASE_URL');
@@ -75,6 +79,10 @@ export class CopilotService {
 
     const startedAt = new Date();
     let sessionId: string | null = null;
+    // Hoisted out of the inner try block so the outer catch (Phase 4B
+    // audit on error path) can attribute the failed call to a user
+    // when the session was resolved before the error fired.
+    let userId: string | null = null;
     let primaryRepoId: string | null = null;
     let telemetry: {
       firstTokenAt: Date | null;
@@ -96,6 +104,7 @@ export class CopilotService {
         session = await this.sessionService.createSession('anonymous');
       }
       sessionId = session.id;
+      userId = session.userId ?? null;
 
       // Resolve effective repoIds
       const effectiveRepoIds = dto.repoIds ?? (dto.repoId ? [dto.repoId] : session.repoIds ?? []);
@@ -159,6 +168,26 @@ export class CopilotService {
       // (chunk-level sanitization without breaking pattern boundaries).
       const validation = this.llmValidator.validate(rawFullContent);
       const fullContent = validation.sanitized;
+
+      // 6b. Phase 4B: write one audit row per LLM call. Fire-and-forget —
+      // never await, never let failure here block the user response.
+      // Stores hashes (not raw text), token counts, latency, and the
+      // post-validator redaction tally for Phase 4C anomaly alerts.
+      void this.llmAudit.record({
+        orgId: currentOrgId() ?? null,
+        userId,
+        callSite: 'copilot.chat',
+        provider: this.llmProvider,
+        model: this.chatModel,
+        promptText: messages.map(m => ('content' in m ? String(m.content ?? '') : '')).join('\n'),
+        responseText: fullContent,
+        promptTokens: telemetry?.promptTokens ?? null,
+        completionTokens: telemetry?.completionTokens ?? null,
+        totalTokens: telemetry?.totalTokens ?? null,
+        latencyMs: telemetry?.latencyMs ?? null,
+        killSwitchBlocked: false,
+        redactions: validation.redactions,
+      });
 
       // 7. Send sources event
       if (searchResults.length > 0) {
@@ -228,6 +257,28 @@ export class CopilotService {
       const errorMsg = err instanceof Error ? err.message : String(err);
       this.logger.error(`Chat error: ${errorMsg}`);
       this.sendSSE(res, { type: SSEEventType.ERROR, message: errorMsg });
+
+      // Phase 4B: audit failures + kill-switch blocks too. The
+      // killSwitchBlocked flag lets Phase 4C alerts distinguish
+      // operator-engaged blackouts from upstream provider failures.
+      // userId is hoisted, so it carries the resolved user when the
+      // session lookup happened before the error, or null otherwise.
+      void this.llmAudit.record({
+        orgId: currentOrgId() ?? null,
+        userId,
+        callSite: 'copilot.chat',
+        provider: this.llmProvider,
+        model: this.chatModel,
+        promptText: dto.message ?? '',
+        responseText: null,
+        latencyMs: telemetry?.latencyMs ?? null,
+        promptTokens: telemetry?.promptTokens ?? null,
+        completionTokens: telemetry?.completionTokens ?? null,
+        totalTokens: telemetry?.totalTokens ?? null,
+        killSwitchBlocked: err instanceof LLMKillSwitchError,
+        error: errorMsg,
+      });
+
       await this.recordTelemetry({
         source: 'chat',
         status: 'failed',

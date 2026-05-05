@@ -130,3 +130,55 @@ DID get past the kill switch. If you see this in the api log:
 … that's evidence of either prompt-injection succeeding past your
 context filter OR the model hallucinating real-shape tokens. Engage the
 kill switch and investigate before disengaging.
+
+---
+
+## Audit log (Phase 4B)
+
+Every wired LLM call writes one row to `llm_audit_log` via
+`LLMAuditService`. Useful for forensics during an incident — find every
+call that happened in a window, slice by call-site / org / user.
+
+We persist **hashes only** for prompt and response (sha256), never the
+raw bytes. The post-validator redaction tally is preserved separately
+so the per-row JSONB column tells you exactly how many of each pattern
+type the validator scrubbed.
+
+Useful queries:
+
+```sql
+-- Recent kill-switch-blocked calls by org (verifies engagement scope).
+SELECT org_id, count(*), max(created_at)
+FROM llm_audit_log
+WHERE kill_switch_blocked
+  AND created_at > now() - interval '1 hour'
+GROUP BY org_id
+ORDER BY count(*) DESC;
+
+-- Which surfaces are leaking credentials? (sustained non-empty redactions).
+SELECT call_site,
+       sum((redactions->>'AWS_ACCESS_KEY')::int) AS aws,
+       sum((redactions->>'GITHUB_PAT')::int)    AS gh,
+       count(*) FILTER (WHERE redactions != '{}'::jsonb) AS rows_with_redactions
+FROM llm_audit_log
+WHERE created_at > now() - interval '24 hours'
+GROUP BY call_site
+ORDER BY rows_with_redactions DESC;
+
+-- Token spend per org last hour (cost spike detection).
+SELECT org_id, sum(total_tokens), count(*) AS calls
+FROM llm_audit_log
+WHERE created_at > now() - interval '1 hour'
+  AND total_tokens IS NOT NULL
+GROUP BY org_id
+ORDER BY sum(total_tokens) DESC
+LIMIT 20;
+```
+
+Retention is intentionally not enforced at the DB layer. Run a periodic
+`DELETE WHERE created_at < now() - interval 'N days'` via cron when
+storage becomes a concern; rows are ~200 bytes each so 10M rows is
+roughly 2 GB.
+
+Phase 4C (next PR) wires automated alerts on top of these queries
+(token-rate spikes, sustained redactions, kill-switch-block volume).

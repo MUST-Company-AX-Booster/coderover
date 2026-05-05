@@ -29,6 +29,7 @@ import { EdgeProducerAudit } from '../entities/edge-producer-audit.entity';
 import { GraphMigration } from '../entities/graph-migration.entity';
 import { RevokedToken } from '../entities/revoked-token.entity';
 import { CacheEntry } from '../entities/cache-entry.entity';
+import { LLMAuditLog } from '../entities/llm-audit-log.entity';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { CacheEntry } from '../entities/cache-entry.entity';
           GraphMigration,
           RevokedToken,
           CacheEntry,
+          LLMAuditLog,
         ],
         migrations: [join(__dirname, '..', 'database', 'migrations', '*{.ts,.js}')],
         migrationsRun:

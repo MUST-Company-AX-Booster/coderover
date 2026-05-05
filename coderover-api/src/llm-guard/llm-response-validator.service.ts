@@ -76,11 +76,15 @@ export class LLMResponseValidatorService {
     const maxLength = options.maxLength ?? DEFAULT_MAX_LENGTH;
 
     // 1. Length cap — truncate before redaction so we don't waste
-    //    regex work on bytes we'll throw away anyway.
+    //    regex work on bytes we'll throw away anyway. Account for the
+    //    marker length so the FINAL string respects `maxLength`
+    //    strictly (a downstream client renderer that has hard caps at
+    //    `maxLength` should never see anything bigger).
     let truncated = false;
     let working = response;
     if (working.length > maxLength) {
-      working = working.slice(0, maxLength) + TRUNCATION_MARKER;
+      const sliceTo = Math.max(0, maxLength - TRUNCATION_MARKER.length);
+      working = working.slice(0, sliceTo) + TRUNCATION_MARKER;
       truncated = true;
       this.logger.warn(
         `LLM response truncated: ${originalLength} chars > ${maxLength} cap`,

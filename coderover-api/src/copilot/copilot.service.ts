@@ -14,6 +14,7 @@ import { currentOrgId } from '../organizations/org-context';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
 import { LLMKillSwitchService } from '../llm-guard/llm-kill-switch.service';
 import { LLMResponseValidatorService } from '../llm-guard/llm-response-validator.service';
+import { redactCredentials, redactJSONValue } from '../ingest/credential-redactor.service';
 
 const otelTracer = trace.getTracer('coderover.copilot');
 import {
@@ -326,6 +327,11 @@ export class CopilotService {
 
     // Loop up to max iterations to prevent infinite tool-call chains
     for (let iteration = 0; iteration < maxIterations; iteration++) {
+      // Phase 4A: gate every outbound LLM call (BOTH the local-provider
+      // branch below and the OpenAI/streaming branch further down).
+      // Placed at the top of the loop so neither path can bypass it.
+      this.llmKillSwitch.assertNotKilled();
+
       if (this.llmProvider === 'local') {
         const response = await createLocalChatCompletion({
           apiKey: this.configService.get<string>('OPENAI_API_KEY'),
@@ -371,11 +377,6 @@ export class CopilotService {
           'coderover.org': orgId ?? 'unknown',
         },
       });
-
-      // Phase 4A: gate every outbound LLM call. Throws 503 immediately
-      // if an operator has engaged LLM_KILL_SWITCH — request never
-      // leaves the api process.
-      this.llmKillSwitch.assertNotKilled();
 
       const stream = await this.openai.chat.completions.create({
         model: this.chatModel,
@@ -467,7 +468,22 @@ export class CopilotService {
           parsedArgs = {};
         }
 
-        const toolResult = await this.mcpService.executeTool(tc.name, parsedArgs);
+        const rawToolResult = await this.mcpService.executeTool(tc.name, parsedArgs);
+
+        // Phase 4A: scrub credential patterns from the tool result tree
+        // BEFORE it (a) flows back into the LLM context for the next
+        // iteration, (b) streams to the client via SSE, and (c) lands
+        // in chat history via the persisted toolCalls. A tool that
+        // legitimately returns file contents or query rows can surface
+        // an embedded secret; redactJSONValue walks the whole tree.
+        const toolResult = {
+          ...rawToolResult,
+          result: redactJSONValue(rawToolResult.result),
+          error:
+            typeof rawToolResult.error === 'string'
+              ? redactCredentials(rawToolResult.error)
+              : rawToolResult.error,
+        };
         allToolCalls.push(toolResult);
 
         // Send tool call SSE event

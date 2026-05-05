@@ -56,12 +56,24 @@ describe('LLMResponseValidatorService', () => {
   });
 
   describe('validate — length truncation', () => {
-    it('truncates responses longer than maxLength', () => {
+    it('truncates responses longer than maxLength and respects the cap STRICTLY', () => {
+      // Final string (slice + marker) must not exceed maxLength —
+      // important when a downstream renderer has hard caps.
       const longResponse = 'a'.repeat(200);
       const res = svc.validate(longResponse, { maxLength: 100 });
       expect(res.truncated).toBe(true);
       expect(res.originalLength).toBe(200);
-      expect(res.sanitized.length).toBeLessThan(longResponse.length);
+      expect(res.sanitized.length).toBeLessThanOrEqual(100);
+      expect(res.sanitized).toContain('truncated by LLM guard');
+    });
+
+    it('handles tiny maxLength gracefully (smaller than the marker itself)', () => {
+      // sliceTo = max(0, 5 - 30) = 0 → output is just the marker, but
+      // even the marker alone is longer than maxLength here. We still
+      // emit the marker so the caller knows truncation happened, but
+      // we never go negative or throw.
+      const res = svc.validate('a'.repeat(50), { maxLength: 5 });
+      expect(res.truncated).toBe(true);
       expect(res.sanitized).toContain('truncated by LLM guard');
     });
 

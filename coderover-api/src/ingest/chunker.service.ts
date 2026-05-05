@@ -1,5 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AstService, SymbolInfo, NestRole, ImportInfo, MethodInfo, CallSiteInfo, InheritanceInfo } from './ast.service';
+import {
+  countCredentialMatches,
+  redactCallSites,
+  redactCredentials,
+  redactImports,
+  redactInheritance,
+  redactMethods,
+  redactStringList,
+  redactSymbols,
+} from './credential-redactor.service';
 import { MultiLangAstService } from './languages/multi-lang-ast.service';
 import { LanguageDetectorService, SupportedLanguage, SupportedFramework } from './languages/language-detector.service';
 
@@ -189,9 +199,16 @@ export class ChunkerService {
     while (currentStart < lines.length) {
       const { endLine } = this.findChunkBoundary(lines, currentStart);
       const chunkLines = lines.slice(currentStart, endLine + 1);
-      const rawText = chunkLines.join('\n');
+      const originalRawText = chunkLines.join('\n');
 
-      if (rawText.trim().length > 0) {
+      if (originalRawText.trim().length > 0) {
+        // Phase 3C (Zero Trust): scrub credential patterns ONCE on the
+        // raw chunk source, then build chunkText from the already-redacted
+        // body. Avoids running the regex set twice on the same bytes
+        // (chunkText is `header + rawText`, so the rawText portion would
+        // otherwise be scanned twice).
+        const rawText = redactCredentials(originalRawText);
+
         // For TypeScript, use the enriched header from AstService
         let chunkSymbols: SymbolInfo[] = [];
         let chunkText = rawText;
@@ -211,7 +228,11 @@ export class ChunkerService {
             chunkSymbols,
             tsStructure.nestRole,
           );
-          chunkText = header + rawText;
+          // Redact the header too — symbol names parsed from raw source
+          // could legitimately be a credential-shaped identifier (rare,
+          // but a `const AKIA1234567890ABCDE = ...` would surface in the
+          // header's `Symbols:` line otherwise).
+          chunkText = redactCredentials(header) + rawText;
         } else {
           // For other languages, build a lightweight header
           const mlStructure = fileStructure as ReturnType<MultiLangAstService['parseFile']>;
@@ -222,7 +243,7 @@ export class ChunkerService {
             filePath, moduleName, currentStart + 1, endLine + 1,
             chunkSymbols, language, nestRole,
           );
-          chunkText = header + rawText;
+          chunkText = redactCredentials(header) + rawText;
         }
 
         const structure = fileStructure as any;
@@ -230,7 +251,25 @@ export class ChunkerService {
         // Attach entity graph data only to the first chunk to avoid duplicates in DB
         // (Since EmbedderService inserts them into separate tables)
         const isFirstChunk = currentStart === 0;
-        
+
+        // Phase 3C — also scrub the JSONB metadata that travels alongside
+        // chunkText. Symbol/method/call-site names come from AST-parsed
+        // identifiers; if any identifier is a credential-shaped string it
+        // would otherwise survive into pgvector's `code_methods` /
+        // `code_callsites` / etc. tables.
+        const safeSymbols = redactSymbols(chunkSymbols);
+        const safeImports: ImportInfo[] = redactImports<ImportInfo>(structure.imports ?? []);
+        const safeExports = redactStringList(structure.exports ?? []);
+        const safeMethods: MethodInfo[] = isFirstChunk
+          ? redactMethods<MethodInfo>(structure.methods ?? [])
+          : [];
+        const safeCallSites: CallSiteInfo[] = isFirstChunk
+          ? redactCallSites<CallSiteInfo>(structure.callSites ?? [])
+          : [];
+        const safeInheritance: InheritanceInfo[] = isFirstChunk
+          ? redactInheritance<InheritanceInfo>(structure.inheritance ?? [])
+          : [];
+
         chunks.push({
           chunkText,
           rawText,
@@ -239,21 +278,33 @@ export class ChunkerService {
           lineStart: currentStart + 1,
           lineEnd: endLine + 1,
           commitSha,
-          symbols: chunkSymbols,
+          symbols: safeSymbols,
           nestRole,
-          imports: structure.imports ?? [],
-          exports: structure.exports ?? [],
+          imports: safeImports,
+          exports: safeExports,
           language,
           framework,
-          methods: isFirstChunk ? (structure.methods ?? []) : [],
-          callSites: isFirstChunk ? (structure.callSites ?? []) : [],
-          inheritance: isFirstChunk ? (structure.inheritance ?? []) : [],
+          methods: safeMethods,
+          callSites: safeCallSites,
+          inheritance: safeInheritance,
         });
       }
 
       const overlapLines = this.charsToLineCount(lines, endLine, OVERLAP_SIZE);
       const nextStart = endLine + 1 - overlapLines;
       currentStart = nextStart <= currentStart ? endLine + 1 : nextStart;
+    }
+
+    // Per-file telemetry on credential redactions — useful when reading
+    // ingestion logs to spot a repo that's spraying secrets in source.
+    const fileLevelMatches = countCredentialMatches(content);
+    const totalRedacted = Object.values(fileLevelMatches).reduce((a, b) => a + b, 0);
+    if (totalRedacted > 0) {
+      this.logger.warn(
+        `Redacted ${totalRedacted} credential pattern(s) from ${filePath}: ${Object.entries(fileLevelMatches)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(', ')}`,
+      );
     }
 
     this.logger.debug(`Chunked ${filePath} (${language}): ${chunks.length} chunks from ${lines.length} lines`);

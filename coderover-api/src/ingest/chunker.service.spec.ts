@@ -288,5 +288,46 @@ export class BookingService {
       const hasSymbolLine = chunks.some((c) => c.chunkText.includes('// Symbols:'));
       expect(hasSymbolLine).toBe(true);
     });
+
+    it('Phase 3C: redacts credential patterns from chunkText and rawText before they leave the chunker', () => {
+      // A file that hard-codes secrets — the kind of thing that
+      // happens when a developer commits a debugging snippet by
+      // accident. Chunked output must not carry the secret material
+      // forward to the embedder / pgvector.
+      const content = `
+import { Injectable } from '@nestjs/common';
+
+@Injectable()
+export class LeakyService {
+  // Real-world prefix shapes — see credential-redactor.service.ts.
+  private awsKey = "AKIAIOSFODNN7EXAMPLE";
+  private githubPat = "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+  ping() { return 'ok'; }
+}
+`;
+      const file: FileToChunk = {
+        filePath: 'src/leak/leaky.service.ts',
+        content,
+        commitSha: 'abc123',
+      };
+
+      const chunks = service.chunkFile(file);
+      expect(chunks.length).toBeGreaterThan(0);
+
+      const allChunkText = chunks.map((c) => c.chunkText).join('\n');
+      const allRawText = chunks.map((c) => c.rawText).join('\n');
+
+      // Originals MUST be gone from both text fields.
+      expect(allChunkText).not.toContain('AKIAIOSFODNN7EXAMPLE');
+      expect(allChunkText).not.toContain('ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+      expect(allRawText).not.toContain('AKIAIOSFODNN7EXAMPLE');
+      expect(allRawText).not.toContain('ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+
+      // Replacement envelope is present so a chat retrieval over the
+      // chunk surfaces the redaction site rather than appearing silently empty.
+      expect(allChunkText).toContain('[REDACTED:AWS_ACCESS_KEY]');
+      expect(allChunkText).toContain('[REDACTED:GITHUB_PAT]');
+    });
   });
 });

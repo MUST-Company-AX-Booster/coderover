@@ -164,16 +164,22 @@ export class LLMAnomalyAlertsService implements OnModuleInit, OnModuleDestroy {
     );
     if (threshold <= 0) return [];
 
+    // No `::int` cast on the SUM — Postgres returns `bigint` which the
+    // node-postgres driver surfaces as a string. Casting to int4 in
+    // SQL would throw "integer out of range" when an org's total
+    // crosses ~2.1B tokens — exactly the runaway-loop scenario this
+    // signal is designed to catch. JS `Number()` handles values up to
+    // 2^53 safely, plenty of headroom.
     const rows = await this.repo
       .createQueryBuilder('al')
       .select('al.orgId', 'orgId')
-      .addSelect('SUM(al.totalTokens)::int', 'total')
+      .addSelect('SUM(al.totalTokens)', 'total')
       .where('al.createdAt >= :since', { since })
       .andWhere('al.totalTokens IS NOT NULL')
       .andWhere('al.orgId IS NOT NULL')
       .groupBy('al.orgId')
       .having('SUM(al.totalTokens) >= :threshold', { threshold })
-      .getRawMany<{ orgId: string; total: number }>();
+      .getRawMany<{ orgId: string; total: string | number }>();
 
     return rows.map(r => ({
       signal: 'llm_anomaly.token_rate_spike',
@@ -196,15 +202,17 @@ export class LLMAnomalyAlertsService implements OnModuleInit, OnModuleDestroy {
     );
     if (threshold <= 0) return [];
 
+    // Same reasoning as the SUM query above — COUNT(*) returns bigint;
+    // skip the SQL-level int4 cast and let JS `Number()` coerce.
     const rows = await this.repo
       .createQueryBuilder('al')
       .select('al.callSite', 'callSite')
-      .addSelect('COUNT(*)::int', 'cnt')
+      .addSelect('COUNT(*)', 'cnt')
       .where('al.createdAt >= :since', { since })
       .andWhere(`al.redactions <> '{}'::jsonb`)
       .groupBy('al.callSite')
       .having('COUNT(*) >= :threshold', { threshold })
-      .getRawMany<{ callSite: string; cnt: number }>();
+      .getRawMany<{ callSite: string; cnt: string | number }>();
 
     return rows.map(r => ({
       signal: 'llm_anomaly.sustained_redactions',

@@ -103,6 +103,26 @@ describe('LLMAnomalyAlertsService', () => {
         0,
       );
     });
+
+    it('coerces bigint-as-string from the pg driver into a number safely', async () => {
+      // Postgres SUM/COUNT return bigint; node-postgres surfaces those
+      // as strings. The query in production therefore yields
+      // `total: "5000000000"`, NOT `total: 5_000_000_000`. The metric
+      // field on the alert must still be a real number, well past
+      // int4 max (2^31 - 1 = 2_147_483_647) to verify we removed the
+      // ::int cast cleanly.
+      const svc = new LLMAnomalyAlertsService(
+        makeRepo({
+          tokenRows: [{ orgId: 'org-a', total: '5000000000' }],
+        }),
+        makeConfig(),
+      );
+      const alerts = await svc.runSweep();
+      const tokenAlerts = alerts.filter(a => a.signal === 'llm_anomaly.token_rate_spike');
+      expect(tokenAlerts).toHaveLength(1);
+      expect(tokenAlerts[0].metric).toBe(5_000_000_000);
+      expect(typeof tokenAlerts[0].metric).toBe('number');
+    });
   });
 
   describe('runSweep — sustained redactions per call_site', () => {
@@ -123,6 +143,24 @@ describe('LLMAnomalyAlertsService', () => {
       expect(redactAlerts).toHaveLength(2);
       expect(redactAlerts[0].scope).toEqual({ call_site: 'copilot.chat' });
       expect(redactAlerts[0].metric).toBe(22);
+    });
+
+    it('coerces bigint-as-string COUNT result into a number', async () => {
+      // Same overflow-safety reasoning as the SUM test above: pg's
+      // COUNT(*) returns bigint, surfaced as a string. Number()
+      // handles up to 2^53 safely.
+      const svc = new LLMAnomalyAlertsService(
+        makeRepo({
+          redactionRows: [{ callSite: 'copilot.chat', cnt: '15' }],
+        }),
+        makeConfig(),
+      );
+      const alerts = await svc.runSweep();
+      const redactAlerts = alerts.filter(
+        a => a.signal === 'llm_anomaly.sustained_redactions',
+      );
+      expect(redactAlerts[0].metric).toBe(15);
+      expect(typeof redactAlerts[0].metric).toBe('number');
     });
   });
 

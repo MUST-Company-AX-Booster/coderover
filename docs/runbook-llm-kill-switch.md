@@ -180,5 +180,50 @@ Retention is intentionally not enforced at the DB layer. Run a periodic
 storage becomes a concern; rows are ~200 bytes each so 10M rows is
 roughly 2 GB.
 
-Phase 4C (next PR) wires automated alerts on top of these queries
-(token-rate spikes, sustained redactions, kill-switch-block volume).
+---
+
+## Anomaly alerts (Phase 4C)
+
+`LLMAnomalyAlertsService` runs a sweep on a recurring interval (default
+5 min) over `llm_audit_log` and emits a structured warn-level log line
+for every threshold breach. The payload is JSON-shaped so a downstream
+sink (Loki + Alertmanager, Datadog, PagerDuty webhook) can pick it up
+without parsing free-form text:
+
+```json
+{
+  "signal": "llm_anomaly.token_rate_spike",
+  "scope": { "org_id": "..." },
+  "metric": 250000,
+  "threshold": 100000,
+  "windowMinutes": 60,
+  "observedAt": "2026-05-05T07:32:11.000Z"
+}
+```
+
+Three signals:
+
+| Signal | What it means |
+|---|---|
+| `llm_anomaly.token_rate_spike` | One org exceeded the configured token total within the window. Cost emergency or runaway prompt loop. |
+| `llm_anomaly.sustained_redactions` | A call_site produced ≥ N rows with non-empty `redactions` within the window. Either prompt-injection is succeeding, or the model is hallucinating real-shape tokens. **Engage the kill switch and investigate.** |
+| `llm_anomaly.kill_switch_volume` | Global count of `kill_switch_blocked = true` rows exceeded threshold. Normally operator-driven, but a sustained high count without an operator engaging is evidence of a deploy that flipped the env var by accident. |
+
+Threshold env vars (all optional, sensible defaults):
+
+```bash
+ANOMALY_CHECK_INTERVAL_MS=300000        # sweep cadence (5min)
+ANOMALY_WINDOW_MINUTES=60               # look-back window
+ANOMALY_TOKEN_RATE_PER_ORG=100000       # tokens/window per org
+ANOMALY_REDACTIONS_PER_CALL_SITE=10     # rows with redactions/window per call_site
+ANOMALY_KILL_SWITCH_BLOCKS=50           # global blocks/window
+```
+
+Set any threshold to `0` to disable that signal. Set
+`ANOMALY_CHECK_INTERVAL_MS=0` to disable the sweep entirely.
+
+The current implementation **emits warn logs only** — there is no
+de-duplication and no native webhook sink. The same alert will re-fire
+every sweep while the breach persists, which is what you usually want
+during an incident. Phase 4D follow-ups: webhook sink + cooldown state
+machine.

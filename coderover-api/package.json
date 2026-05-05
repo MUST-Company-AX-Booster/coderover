@@ -107,7 +107,8 @@
     "js-yaml": "^4.1.1",
     "glob": "^10.5.0",
     "tmp": "^0.2.4",
-    "webpack": "^5.104.1"
+    "webpack": "^5.104.1",
+    "file-type": "^21.3.2"
   },
   "jest": {
     "moduleFileExtensions": [

@@ -17,14 +17,9 @@
 -- Run ONCE per environment as a superuser. Idempotent: re-running
 -- updates the passwords and re-applies grants without dropping data.
 --
--- Usage (psql, with passwords passed as vars):
---
---   PGPASSWORD="$SUPERUSER_PASSWORD" psql \
---     -h localhost -p 5434 -U postgres -d coderover \
---     -v ON_ERROR_STOP=1 \
---     -v app_password="$(openssl rand -base64 32)" \
---     -v migrate_password="$(openssl rand -base64 32)" \
---     -f sql/bootstrap-roles.sql
+-- Usage: see docs/runbook-db-roles.md for the operator-facing
+-- procedure. The short form: connect as a superuser, pass two
+-- generated passwords as psql -v variables, and \i this file.
 --
 -- Then update the api env:
 --

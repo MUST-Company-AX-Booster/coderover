@@ -60,11 +60,11 @@ You need:
 APP_PW=$(openssl rand -base64 32)
 MIGRATE_PW=$(openssl rand -base64 32)
 
-# Run the bootstrap. Idempotent: re-running rotates passwords.
-# PGPASSWORD keeps the superuser password out of the shell command line
-# (and out of `ps` / shell history).
-PGPASSWORD="$SUPERUSER_PW" psql \
-  -h db.internal -p 5432 -U postgres -d coderover \
+# Run the bootstrap. Idempotent — re-running rotates passwords.
+# `-W` prompts for the superuser password interactively; better than
+# putting it on the command line where it would land in shell history
+# and `ps`. For unattended runs, use a `~/.pgpass` entry instead.
+psql -h db.internal -p 5432 -U postgres -d coderover -W \
   -v ON_ERROR_STOP=1 \
   -v app_password="$APP_PW" \
   -v migrate_password="$MIGRATE_PW" \
@@ -142,18 +142,18 @@ two credentials.
 After setup:
 
 ```bash
-# coderover_app cannot DDL
-PGPASSWORD=$APP_PW psql -h db.internal -U coderover_app -d coderover \
+# coderover_app cannot DDL — `-W` prompts for the password.
+psql -h db.internal -U coderover_app -d coderover -W \
   -c "CREATE TABLE foo (x int);"
 # ERROR:  permission denied for schema public
 
 # coderover_app can CRUD
-PGPASSWORD=$APP_PW psql -h db.internal -U coderover_app -d coderover \
+psql -h db.internal -U coderover_app -d coderover -W \
   -c "SELECT count(*) FROM repos;"
 # returns a count
 
 # coderover_migrate can DDL
-PGPASSWORD=$MIGRATE_PW psql -h db.internal -U coderover_migrate -d coderover \
+psql -h db.internal -U coderover_migrate -d coderover -W \
   -c "CREATE TABLE _phase5_smoke (x int); DROP TABLE _phase5_smoke;"
 # returns CREATE TABLE / DROP TABLE
 ```
@@ -166,9 +166,13 @@ existed, so the old password is replaced atomically.
 
 ```bash
 APP_PW_NEW=$(openssl rand -base64 32)
-psql … -v app_password="$APP_PW_NEW" -v migrate_password="$MIGRATE_PW" \
+# Same shape as first-time setup, with a fresh app password and the
+# previous migrate password (or rotate both — pass new values for each).
+psql -h db.internal -U postgres -d coderover -W \
+  -v app_password="$APP_PW_NEW" \
+  -v migrate_password="$MIGRATE_PW" \
   -f coderover-api/sql/bootstrap-roles.sql
-# update DATABASE_PASSWORD in the api env, restart.
+# Then update DATABASE_PASSWORD in the api env and restart.
 ```
 
 ## Adding new tables

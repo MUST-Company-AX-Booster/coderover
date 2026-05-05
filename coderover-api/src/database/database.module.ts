@@ -94,6 +94,13 @@ async function runPendingMigrations(configService: ConfigService): Promise<void>
     `Running migrations as ${usingDedicatedMigrateUser ? `'${migrateUser}' (dedicated)` : `'${migrateUser}' (shared with runtime)`}`,
   );
 
+  // Pass the same ENTITIES list to the migrate DataSource. Today every
+  // migration is pure `queryRunner.query()` SQL, so an empty array
+  // would technically work, but a backfill migration that calls
+  // `queryRunner.manager.getRepository(SomeEntity)` would crash at
+  // runtime with a confusing "No metadata for X was found" error. The
+  // metadata-loading cost at boot is negligible compared to the
+  // debug-time cost of that failure mode.
   const migrateDataSource = new DataSource({
     type: 'postgres',
     host: configService.get<string>('DATABASE_HOST'),
@@ -101,7 +108,7 @@ async function runPendingMigrations(configService: ConfigService): Promise<void>
     database: configService.get<string>('DATABASE_NAME'),
     username: migrateUser,
     password: migratePassword,
-    entities: [],
+    entities: ENTITIES,
     migrations: [MIGRATIONS_GLOB],
     synchronize: false,
     logging: configService.get<string>('NODE_ENV') === 'development',

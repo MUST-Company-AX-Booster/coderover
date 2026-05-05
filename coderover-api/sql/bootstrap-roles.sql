@@ -19,11 +19,12 @@
 --
 -- Usage (psql, with passwords passed as vars):
 --
---   psql "postgresql://postgres:postgres@localhost:5434/coderover" \
---        -v ON_ERROR_STOP=1 \
---        -v app_password="$(openssl rand -base64 32)" \
---        -v migrate_password="$(openssl rand -base64 32)" \
---        -f sql/bootstrap-roles.sql
+--   PGPASSWORD="$SUPERUSER_PASSWORD" psql \
+--     -h localhost -p 5434 -U postgres -d coderover \
+--     -v ON_ERROR_STOP=1 \
+--     -v app_password="$(openssl rand -base64 32)" \
+--     -v migrate_password="$(openssl rand -base64 32)" \
+--     -f sql/bootstrap-roles.sql
 --
 -- Then update the api env:
 --

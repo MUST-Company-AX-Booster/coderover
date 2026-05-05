@@ -61,7 +61,10 @@ APP_PW=$(openssl rand -base64 32)
 MIGRATE_PW=$(openssl rand -base64 32)
 
 # Run the bootstrap. Idempotent: re-running rotates passwords.
-psql "postgresql://postgres:postgres@db.internal:5432/coderover" \
+# PGPASSWORD keeps the superuser password out of the shell command line
+# (and out of `ps` / shell history).
+PGPASSWORD="$SUPERUSER_PW" psql \
+  -h db.internal -p 5432 -U postgres -d coderover \
   -v ON_ERROR_STOP=1 \
   -v app_password="$APP_PW" \
   -v migrate_password="$MIGRATE_PW" \

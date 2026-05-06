@@ -1,0 +1,201 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-label="Orbital Map — code graph with citations">
+  <defs>
+    <pattern id="scan" width="4" height="4" patternUnits="userSpaceOnUse">
+      <rect width="4" height="4" fill="#0A0A0A"/>
+      <rect width="4" height="2" fill="rgba(0,0,0,0.35)"/>
+    </pattern>
+    <style><![CDATA[
+      .mono { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .sans { font-family: Inter, -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+      .bone { fill: #EDEBE5; }
+      .silver { fill: #8C8C87; }
+      .green { fill: #9FE0B4; }
+      .ink { fill: #D8D6CF; }
+      .eyebrow { letter-spacing: 0.18em; text-transform: uppercase; }
+      .node-fill { fill: #1A1A1A; stroke: rgba(237,235,229,0.22); stroke-width: 1; }
+      .node-active { fill: #1A1A1A; stroke: #9FE0B4; stroke-width: 1.5; }
+      .edge { stroke: rgba(237,235,229,0.18); fill: none; }
+      .edge-active { stroke: #9FE0B4; fill: none; stroke-width: 1.5; }
+    ]]></style>
+  </defs>
+
+  <rect width="1200" height="675" fill="#0A0A0A"/>
+  <rect width="1200" height="675" fill="url(#scan)" opacity="0.55"/>
+
+  <!-- top bar -->
+  <line x1="0" y1="56" x2="1200" y2="56" stroke="rgba(237,235,229,0.10)"/>
+  <g class="mono" font-size="11">
+    <text x="32" y="36" class="silver eyebrow">§ ORBITAL MAP — knowledge graph</text>
+    <text x="1168" y="36" text-anchor="end" class="silver eyebrow">14,231 NODES · 38,902 EDGES · 16 LANGUAGES</text>
+  </g>
+
+  <!-- left: graph canvas -->
+  <g transform="translate(0,56)">
+    <!-- edges (drawn first so nodes overlap) -->
+    <g class="edge">
+      <path d="M 250 240 Q 360 180 470 220"/>
+      <path d="M 250 240 Q 220 340 320 410"/>
+      <path d="M 470 220 Q 540 290 620 290"/>
+      <path d="M 470 220 Q 410 320 400 380"/>
+      <path d="M 620 290 Q 640 380 580 460"/>
+      <path d="M 320 410 Q 380 470 470 470"/>
+      <path d="M 470 470 Q 550 480 580 460"/>
+      <path d="M 620 290 Q 720 240 770 200"/>
+      <path d="M 770 200 Q 800 280 750 360"/>
+      <path d="M 250 240 Q 150 260 130 350"/>
+      <path d="M 130 350 Q 160 470 260 510"/>
+      <path d="M 260 510 Q 360 520 400 480"/>
+    </g>
+
+    <!-- highlighted traversal path: AuthService -> authenticate() -> verifyToken() -->
+    <g class="edge-active">
+      <path d="M 250 240 Q 360 180 470 220"/>
+      <path d="M 470 220 Q 540 290 620 290"/>
+    </g>
+
+    <!-- nodes -->
+    <g class="mono" font-size="11">
+      <!-- File: AuthController.ts -->
+      <g>
+        <rect x="190" y="216" width="140" height="48" class="node-fill"/>
+        <circle cx="204" cy="232" r="3" class="green"/>
+        <text x="216" y="236" class="bone">AuthController.ts</text>
+        <text x="216" y="252" class="silver" font-size="10">file · 142 lines</text>
+      </g>
+      <!-- Class: AuthService (active) -->
+      <g>
+        <rect x="410" y="196" width="140" height="48" class="node-active"/>
+        <circle cx="424" cy="212" r="3" class="green"/>
+        <text x="436" y="216" class="bone">AuthService</text>
+        <text x="436" y="232" class="silver" font-size="10">class · 9 methods</text>
+      </g>
+      <!-- Method: authenticate() (active terminal) -->
+      <g>
+        <rect x="560" y="266" width="140" height="48" class="node-active"/>
+        <circle cx="574" cy="282" r="3" class="green"/>
+        <text x="586" y="286" class="bone">authenticate()</text>
+        <text x="586" y="302" class="silver" font-size="10">method · src/auth/auth.ts:88</text>
+      </g>
+      <!-- Method: verifyToken() -->
+      <g>
+        <rect x="710" y="176" width="130" height="48" class="node-fill"/>
+        <circle cx="724" cy="192" r="3" class="green"/>
+        <text x="736" y="196" class="bone">verifyToken()</text>
+        <text x="736" y="212" class="silver" font-size="10">method</text>
+      </g>
+      <!-- TokenStore -->
+      <g>
+        <rect x="690" y="336" width="130" height="48" class="node-fill"/>
+        <circle cx="704" cy="352" r="3" class="green"/>
+        <text x="716" y="356" class="bone">TokenStore</text>
+        <text x="716" y="372" class="silver" font-size="10">class</text>
+      </g>
+      <!-- UserRepository -->
+      <g>
+        <rect x="340" y="356" width="130" height="48" class="node-fill"/>
+        <circle cx="354" cy="372" r="3" class="green"/>
+        <text x="366" y="376" class="bone">UserRepository</text>
+        <text x="366" y="392" class="silver" font-size="10">class</text>
+      </g>
+      <!-- LoginPage -->
+      <g>
+        <rect x="260" y="386" width="120" height="48" class="node-fill"/>
+        <circle cx="274" cy="402" r="3" class="green"/>
+        <text x="286" y="406" class="bone">LoginPage</text>
+        <text x="286" y="422" class="silver" font-size="10">component</text>
+      </g>
+      <!-- session.middleware -->
+      <g>
+        <rect x="510" y="446" width="160" height="48" class="node-fill"/>
+        <circle cx="524" cy="462" r="3" class="green"/>
+        <text x="536" y="466" class="bone">session.middleware</text>
+        <text x="536" y="482" class="silver" font-size="10">middleware</text>
+      </g>
+      <!-- jwt.utils -->
+      <g>
+        <rect x="80" y="326" width="100" height="48" class="node-fill"/>
+        <circle cx="94" cy="342" r="3" class="green"/>
+        <text x="106" y="346" class="bone">jwt.utils</text>
+        <text x="106" y="362" class="silver" font-size="10">module</text>
+      </g>
+      <!-- crypto -->
+      <g>
+        <rect x="200" y="486" width="100" height="48" class="node-fill"/>
+        <circle cx="214" cy="502" r="3" class="green"/>
+        <text x="226" y="506" class="bone">crypto</text>
+        <text x="226" y="522" class="silver" font-size="10">stdlib</text>
+      </g>
+    </g>
+
+    <!-- legend -->
+    <g class="mono" font-size="10" transform="translate(32,560)">
+      <text class="silver eyebrow">§ EDGES</text>
+      <g transform="translate(0,16)">
+        <line x1="0" y1="6" x2="22" y2="6" stroke="#9FE0B4" stroke-width="1.5"/>
+        <text x="30" y="10" class="ink">EXTRACTED · ast-derived</text>
+      </g>
+      <g transform="translate(0,32)">
+        <line x1="0" y1="6" x2="22" y2="6" stroke="rgba(237,235,229,0.40)"/>
+        <text x="30" y="10" class="ink">INFERRED · llm-derived (score)</text>
+      </g>
+      <g transform="translate(0,48)">
+        <line x1="0" y1="6" x2="22" y2="6" stroke="rgba(237,235,229,0.18)" stroke-dasharray="3 3"/>
+        <text x="30" y="10" class="ink">AMBIGUOUS · evidence missing</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- right: detail panel -->
+  <g transform="translate(848,72)">
+    <rect x="0" y="0" width="320" height="572" fill="#1A1A1A" stroke="rgba(237,235,229,0.10)"/>
+    <line x1="0" y1="40" x2="320" y2="40" stroke="rgba(237,235,229,0.10)"/>
+
+    <text x="20" y="26" class="mono silver eyebrow" font-size="11">§ INSPECT</text>
+
+    <text x="20" y="74" class="sans bone" font-size="20" font-weight="600">authenticate()</text>
+    <text x="20" y="98" class="mono silver" font-size="11">src/auth/auth.ts:88-124</text>
+
+    <line x1="20" y1="118" x2="300" y2="118" stroke="rgba(237,235,229,0.10)"/>
+
+    <text x="20" y="146" class="mono silver eyebrow" font-size="11">§ SUMMARY</text>
+    <g class="sans ink" font-size="13">
+      <text x="20" y="172">
+        <tspan>Validates a session against the JWT</tspan>
+        <tspan x="20" dy="20">store and the user repository.</tspan>
+        <tspan x="20" dy="20">Returns a user record or throws</tspan>
+        <tspan x="20" dy="20">UnauthorizedError.</tspan>
+      </text>
+    </g>
+
+    <line x1="20" y1="270" x2="300" y2="270" stroke="rgba(237,235,229,0.10)"/>
+
+    <text x="20" y="298" class="mono silver eyebrow" font-size="11">§ CALLED BY · 7</text>
+    <g class="mono ink" font-size="12">
+      <text x="20" y="322">→ AuthController.login</text>
+      <text x="20" y="342">→ AuthController.refresh</text>
+      <text x="20" y="362">→ session.middleware</text>
+      <text x="20" y="382">→ MCPGuard.canActivate</text>
+    </g>
+
+    <line x1="20" y1="402" x2="300" y2="402" stroke="rgba(237,235,229,0.10)"/>
+
+    <text x="20" y="430" class="mono silver eyebrow" font-size="11">§ CITATIONS</text>
+    <g class="mono" font-size="12">
+      <g transform="translate(20,448)">
+        <circle cx="3" cy="6" r="3" class="green"/>
+        <text x="14" y="10" class="bone">src/auth/auth.ts:88-124</text>
+      </g>
+      <g transform="translate(20,470)">
+        <circle cx="3" cy="6" r="3" class="green"/>
+        <text x="14" y="10" class="bone">src/auth/auth.spec.ts:42</text>
+      </g>
+      <g transform="translate(20,492)">
+        <circle cx="3" cy="6" r="3" fill="none" stroke="#EDEBE5" stroke-width="1.5"/>
+        <text x="14" y="10" class="ink">docs/architecture/auth.md:14</text>
+      </g>
+    </g>
+
+    <line x1="0" y1="528" x2="320" y2="528" stroke="rgba(237,235,229,0.10)"/>
+    <text x="20" y="552" class="mono silver eyebrow" font-size="11">§ CONFIDENCE · solid · half · hollow</text>
+  </g>
+</svg>

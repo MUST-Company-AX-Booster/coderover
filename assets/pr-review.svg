@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-label="PR review with graph-aware findings and citations">
+  <defs>
+    <pattern id="scan" width="4" height="4" patternUnits="userSpaceOnUse">
+      <rect width="4" height="4" fill="#0A0A0A"/>
+      <rect width="4" height="2" fill="rgba(0,0,0,0.35)"/>
+    </pattern>
+    <style><![CDATA[
+      .mono { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .sans { font-family: Inter, -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+      .bone { fill: #EDEBE5; }
+      .ink { fill: #D8D6CF; }
+      .silver { fill: #8C8C87; }
+      .green { fill: #9FE0B4; }
+      .coral { fill: #E89D9D; }
+      .eyebrow { letter-spacing: 0.18em; text-transform: uppercase; }
+    ]]></style>
+  </defs>
+
+  <rect width="1200" height="675" fill="#0A0A0A"/>
+  <rect width="1200" height="675" fill="url(#scan)" opacity="0.55"/>
+
+  <!-- top frame -->
+  <line x1="0" y1="56" x2="1200" y2="56" stroke="rgba(237,235,229,0.10)"/>
+  <g class="mono" font-size="11">
+    <text x="32" y="36" class="silver eyebrow">§ PR REVIEW — graph-aware findings</text>
+    <text x="1168" y="36" text-anchor="end" class="silver eyebrow">[scout] DOWNLINKED IN 1.8s</text>
+  </g>
+
+  <!-- PR header -->
+  <g transform="translate(32,80)">
+    <text class="mono silver eyebrow" font-size="11">§ #412 · MUST-COMPANY-AX-BOOSTER/CODEROVER</text>
+    <text y="32" class="sans bone" font-size="28" font-weight="600">feat(auth): unify GitHub OAuth flow with token resolver</text>
+    <text y="62" class="mono silver" font-size="12">+412 −97 across 14 files · base: main · agent: [scout]</text>
+  </g>
+
+  <!-- result kicker -->
+  <g transform="translate(32,168)">
+    <rect x="0" y="0" width="142" height="26" rx="13" ry="13" fill="none" stroke="#E89D9D" stroke-width="1"/>
+    <circle cx="14" cy="13" r="3" class="coral"/>
+    <text x="26" y="17" class="mono coral eyebrow" font-size="11">CHECK · BLOCKED</text>
+
+    <text x="158" y="17" class="mono silver" font-size="12">2 BLOCK · 3 WARN · 1 NIT · graph-walk depth 3</text>
+  </g>
+
+  <!-- findings list -->
+  <g transform="translate(32,212)" class="mono" font-size="13">
+    <!-- finding 1: BLOCK security -->
+    <g>
+      <rect x="0" y="0" width="800" height="64" fill="#1A1A1A" stroke="rgba(237,235,229,0.10)"/>
+      <rect x="0" y="0" width="3" height="64" class="coral"/>
+      <text x="20" y="22" class="coral eyebrow">[sentinel] BLOCK</text>
+      <text x="156" y="22" class="bone">src/auth/oauth.ts:142</text>
+      <text x="380" y="22" class="silver">· security · ↳ 14 callers</text>
+      <text x="20" y="46" class="ink" font-size="12">access_token logged via console.log; redact before merge — PII risk on prod log shipper</text>
+    </g>
+    <!-- finding 2: BLOCK perf -->
+    <g transform="translate(0,76)">
+      <rect x="0" y="0" width="800" height="64" fill="#1A1A1A" stroke="rgba(237,235,229,0.10)"/>
+      <rect x="0" y="0" width="3" height="64" class="coral"/>
+      <text x="20" y="22" class="coral eyebrow">[scout] BLOCK</text>
+      <text x="156" y="22" class="bone">src/repos/repos.service.ts:88</text>
+      <text x="420" y="22" class="silver">· n+1 · ↳ /repos endpoint hot path</text>
+      <text x="20" y="46" class="ink" font-size="12">findOne() inside .map() loops over user.orgs — graph shows 6 callers downstream</text>
+    </g>
+    <!-- finding 3: WARN -->
+    <g transform="translate(0,152)">
+      <rect x="0" y="0" width="800" height="56" fill="#1A1A1A" stroke="rgba(237,235,229,0.10)"/>
+      <rect x="0" y="0" width="3" height="56" class="green"/>
+      <text x="20" y="22" class="green eyebrow">[scout] WARN</text>
+      <text x="156" y="22" class="bone">src/auth/oauth.ts:88</text>
+      <text x="380" y="22" class="silver">· coverage</text>
+      <text x="20" y="42" class="ink" font-size="12">no spec for refreshAccessToken() — sibling tests cover login() but skip the refresh path</text>
+    </g>
+    <!-- finding 4: WARN -->
+    <g transform="translate(0,220)">
+      <rect x="0" y="0" width="800" height="56" fill="#1A1A1A" stroke="rgba(237,235,229,0.10)"/>
+      <rect x="0" y="0" width="3" height="56" class="green"/>
+      <text x="20" y="22" class="green eyebrow">[scout] WARN</text>
+      <text x="156" y="22" class="bone">migrations/024_token_table.sql</text>
+      <text x="430" y="22" class="silver">· schema</text>
+      <text x="20" y="42" class="ink" font-size="12">added column lacks NOT NULL; legacy rows would silently retain null on backfill</text>
+    </g>
+    <!-- finding 5: WARN -->
+    <g transform="translate(0,288)">
+      <rect x="0" y="0" width="800" height="56" fill="#1A1A1A" stroke="rgba(237,235,229,0.10)"/>
+      <rect x="0" y="0" width="3" height="56" class="green"/>
+      <text x="20" y="22" class="green eyebrow">[archive] WARN</text>
+      <text x="170" y="22" class="bone">decision-log/0007-oauth-state.md</text>
+      <text x="460" y="22" class="silver">· memory</text>
+      <text x="20" y="42" class="ink" font-size="12">conflicts with prior decision #4 (CSRF in cookie); resolve before merge — escalating to lead</text>
+    </g>
+    <!-- finding 6: NIT -->
+    <g transform="translate(0,356)">
+      <rect x="0" y="0" width="800" height="40" fill="#1A1A1A" stroke="rgba(237,235,229,0.10)"/>
+      <text x="20" y="24" class="silver eyebrow">[scout] NIT</text>
+      <text x="156" y="24" class="bone">src/auth/oauth.ts:201</text>
+      <text x="380" y="24" class="silver">· dead code · unused import { uuid } from 'crypto-utils'</text>
+    </g>
+  </g>
+
+  <!-- right rail: graph impact -->
+  <g transform="translate(852,212)">
+    <rect x="0" y="0" width="316" height="396" fill="#1A1A1A" stroke="rgba(237,235,229,0.10)"/>
+    <text x="16" y="26" class="mono silver eyebrow" font-size="11">§ GRAPH IMPACT · DEPTH 3</text>
+
+    <!-- mini graph -->
+    <g transform="translate(28,52)">
+      <line x1="40" y1="20" x2="120" y2="60" stroke="#9FE0B4" stroke-width="1.5"/>
+      <line x1="120" y1="60" x2="200" y2="20" stroke="rgba(237,235,229,0.30)"/>
+      <line x1="120" y1="60" x2="200" y2="100" stroke="rgba(237,235,229,0.30)"/>
+      <line x1="120" y1="60" x2="60" y2="120" stroke="#E89D9D" stroke-width="1.5"/>
+
+      <g class="mono" font-size="10">
+        <rect x="6" y="10" width="68" height="22" fill="#0A0A0A" stroke="#9FE0B4"/>
+        <text x="40" y="25" text-anchor="middle" class="bone">oauth.ts</text>
+
+        <rect x="80" y="50" width="80" height="22" fill="#0A0A0A" stroke="rgba(237,235,229,0.22)"/>
+        <text x="120" y="65" text-anchor="middle" class="bone">AuthService</text>
+
+        <rect x="170" y="10" width="80" height="22" fill="#0A0A0A" stroke="rgba(237,235,229,0.22)"/>
+        <text x="210" y="25" text-anchor="middle" class="bone">MCPGuard</text>
+
+        <rect x="170" y="90" width="80" height="22" fill="#0A0A0A" stroke="rgba(237,235,229,0.22)"/>
+        <text x="210" y="105" text-anchor="middle" class="bone">session.mw</text>
+
+        <rect x="20" y="110" width="80" height="22" fill="#0A0A0A" stroke="#E89D9D"/>
+        <text x="60" y="125" text-anchor="middle" class="coral">repos.svc</text>
+      </g>
+    </g>
+
+    <line x1="16" y1="180" x2="300" y2="180" stroke="rgba(237,235,229,0.10)"/>
+
+    <text x="16" y="206" class="mono silver eyebrow" font-size="11">§ STATS</text>
+    <g class="mono" font-size="12">
+      <text x="16" y="232" class="silver">FILES TOUCHED</text>
+      <text x="300" y="232" text-anchor="end" class="bone">14</text>
+      <text x="16" y="254" class="silver">SYMBOLS AFFECTED</text>
+      <text x="300" y="254" text-anchor="end" class="bone">42</text>
+      <text x="16" y="276" class="silver">DOWNSTREAM CALLERS</text>
+      <text x="300" y="276" text-anchor="end" class="bone">218</text>
+      <text x="16" y="298" class="silver">EDGES INFERRED</text>
+      <text x="300" y="298" text-anchor="end" class="bone">9</text>
+      <text x="16" y="320" class="silver">EDGES AMBIGUOUS</text>
+      <text x="300" y="320" text-anchor="end" class="bone">2</text>
+    </g>
+
+    <line x1="16" y1="346" x2="300" y2="346" stroke="rgba(237,235,229,0.10)"/>
+    <text x="16" y="372" class="mono silver eyebrow" font-size="11">§ EVERY FINDING CARRIES file:line</text>
+  </g>
+
+  <!-- bottom strip -->
+  <line x1="0" y1="640" x2="1200" y2="640" stroke="rgba(237,235,229,0.10)"/>
+  <text x="32" y="660" class="mono silver eyebrow" font-size="11">§ POSTED AS GITHUB CHECK_RUN · OUTCOME: blocking</text>
+  <text x="1168" y="660" text-anchor="end" class="mono silver eyebrow" font-size="11">RULES LEARNED FROM ACCEPTED/REJECTED HISTORY</text>
+</svg>

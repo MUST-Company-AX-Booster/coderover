@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="CodeRover — autonomous fleet of five AI agents">
+  <defs>
+    <pattern id="scan" width="4" height="4" patternUnits="userSpaceOnUse">
+      <rect width="4" height="4" fill="#0A0A0A"/>
+      <rect width="4" height="2" fill="rgba(0,0,0,0.35)"/>
+    </pattern>
+    <linearGradient id="topfade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#050505"/>
+      <stop offset="100%" stop-color="#0A0A0A"/>
+    </linearGradient>
+    <style><![CDATA[
+      .mono { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .sans { font-family: Inter, -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+      .bone { fill: #EDEBE5; }
+      .ink  { fill: #D8D6CF; }
+      .silver { fill: #8C8C87; }
+      .green  { fill: #9FE0B4; }
+      .coral  { fill: #E89D9D; }
+      .eyebrow { letter-spacing: 0.18em; text-transform: uppercase; }
+      .tracked { letter-spacing: 0.04em; }
+    ]]></style>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#topfade)"/>
+  <rect width="1200" height="630" fill="url(#scan)" opacity="0.55"/>
+
+  <!-- top frame line -->
+  <line x1="0" y1="56" x2="1200" y2="56" stroke="rgba(237,235,229,0.10)"/>
+
+  <!-- top bar: status + version -->
+  <g class="mono" font-size="11">
+    <text x="48" y="36" class="silver eyebrow">§ MISSION CONTROL · v0.12.1 · APACHE-2.0</text>
+    <g transform="translate(948,28)">
+      <circle cx="6" cy="8" r="3" class="green"/>
+      <text x="18" y="12" class="silver tracked">5 ROVERS ONLINE · LAST DOWNLINK 00:00:42</text>
+    </g>
+  </g>
+
+  <!-- wordmark -->
+  <g transform="translate(48,170)">
+    <text class="sans bone" font-size="128" font-weight="600" letter-spacing="-0.02em">CodeRover</text>
+    <text x="2" y="56" class="mono silver eyebrow" font-size="13">§ GRAPH-NATIVE AI COPILOT FOR LARGE CODEBASES</text>
+  </g>
+
+  <!-- subtitle / one-liner -->
+  <g transform="translate(48,290)">
+    <text class="sans ink" font-size="22" font-weight="400">
+      <tspan>Autonomous fleet of five agents that review PRs, patrol security,</tspan>
+      <tspan x="0" dy="32">and reason against your code graph.</tspan>
+      <tspan x="0" dy="32" class="silver">MCP-wired into Claude Code, Cursor, Aider, Codex, Gemini CLI.</tspan>
+    </text>
+  </g>
+
+  <!-- left/right column divider -->
+  <line x1="48" y1="450" x2="1152" y2="450" stroke="rgba(237,235,229,0.10)"/>
+
+  <!-- five rover badges -->
+  <g class="mono" font-size="13" transform="translate(48,486)">
+    <!-- scout -->
+    <g>
+      <rect x="0" y="0" width="210" height="92" fill="#1A1A1A" stroke="rgba(237,235,229,0.10)"/>
+      <circle cx="14" cy="18" r="3" class="green"/>
+      <text x="26" y="22" class="bone">[scout]</text>
+      <text x="14" y="46" class="silver" font-size="11">PR-REVIEW AGENT</text>
+      <text x="14" y="74" class="green eyebrow" font-size="11">online</text>
+    </g>
+    <!-- tinker -->
+    <g transform="translate(228,0)">
+      <rect x="0" y="0" width="210" height="92" fill="#1A1A1A" stroke="rgba(237,235,229,0.10)"/>
+      <circle cx="14" cy="18" r="3" class="green"/>
+      <text x="26" y="22" class="bone">[tinker]</text>
+      <text x="14" y="46" class="silver" font-size="11">REFACTOR AGENT</text>
+      <text x="14" y="74" class="green eyebrow" font-size="11">armed</text>
+    </g>
+    <!-- sentinel -->
+    <g transform="translate(456,0)">
+      <rect x="0" y="0" width="210" height="92" fill="#1A1A1A" stroke="rgba(237,235,229,0.22)"/>
+      <circle cx="14" cy="18" r="3" class="coral"/>
+      <text x="26" y="22" class="bone">[sentinel]</text>
+      <text x="14" y="46" class="silver" font-size="11">SECURITY AGENT</text>
+      <text x="14" y="74" class="green eyebrow" font-size="11">patrolling</text>
+    </g>
+    <!-- beacon -->
+    <g transform="translate(684,0)">
+      <rect x="0" y="0" width="210" height="92" fill="#1A1A1A" stroke="rgba(237,235,229,0.10)"/>
+      <circle cx="14" cy="18" r="3" class="green"/>
+      <text x="26" y="22" class="bone">[beacon]</text>
+      <text x="14" y="46" class="silver" font-size="11">SEARCH + CHAT</text>
+      <text x="14" y="74" class="green eyebrow" font-size="11">downlinked</text>
+    </g>
+    <!-- archive -->
+    <g transform="translate(912,0)">
+      <rect x="0" y="0" width="192" height="92" fill="#1A1A1A" stroke="rgba(237,235,229,0.10)"/>
+      <circle cx="14" cy="18" r="3" class="green"/>
+      <text x="26" y="22" class="bone">[archive]</text>
+      <text x="14" y="46" class="silver" font-size="11">DECISION MEMORY</text>
+      <text x="14" y="74" class="green eyebrow" font-size="11">landed</text>
+    </g>
+  </g>
+
+  <!-- bottom frame -->
+  <line x1="0" y1="600" x2="1200" y2="600" stroke="rgba(237,235,229,0.10)"/>
+  <text x="48" y="620" class="mono silver eyebrow" font-size="11">§ BUILT BY MUST COMPANY · CODEROVER.MUST.COMPANY</text>
+  <text x="1152" y="620" class="mono silver eyebrow" font-size="11" text-anchor="end">SELF-HOSTED · MULTI-TENANT · GRAPH-FIRST</text>
+</svg>

@@ -15,6 +15,9 @@ import { SearchService } from '../search/search.service';
 import { LLMKillSwitchService } from '../llm-guard/llm-kill-switch.service';
 import { LLMResponseValidatorService } from '../llm-guard/llm-response-validator.service';
 import { LLMAuditService } from '../llm-guard/llm-audit.service';
+import { EventsService } from '../events/events.service';
+import { GitHubAppService } from '../github-integration/github-app.service';
+import { GitHubTokenResolver } from '../github-integration/github-token-resolver.service';
 
 const llmGuardStubProviders = [
   { provide: LLMKillSwitchService, useValue: { assertNotKilled: jest.fn() } },
@@ -133,6 +136,27 @@ describe('PrReviewService', () => {
           },
         },
         ...llmGuardStubProviders,
+        // EventsService + GitHubApp/TokenResolver were added to
+        // PrReviewService's constructor without a corresponding spec
+        // update. Stub each so DI resolves and tests reach assertion
+        // bodies. Method names match the actual service surface
+        // (EventsService.publish/publishMany, GitHubAppService
+        // .createCheckRun/.completeCheckRun) — calling a non-existent
+        // method on a jest.fn() Map would TypeError at runtime, so
+        // matching the real interface matters even for stubs.
+        { provide: EventsService, useValue: { publish: jest.fn(), publishMany: jest.fn() } },
+        {
+          provide: GitHubAppService,
+          useValue: {
+            isConfigured: jest.fn().mockReturnValue(false),
+            createCheckRun: jest.fn(),
+            completeCheckRun: jest.fn(),
+          },
+        },
+        {
+          provide: GitHubTokenResolver,
+          useValue: { resolveFor: jest.fn().mockResolvedValue(null) },
+        },
       ],
     }).compile();
 

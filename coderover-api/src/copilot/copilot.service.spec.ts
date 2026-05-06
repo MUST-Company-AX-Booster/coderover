@@ -8,6 +8,10 @@ import { McpService } from '../mcp/mcp.service';
 import { SessionService } from './session.service';
 import { RepoService } from '../repo/repo.service';
 import { SSEEventType } from './dto/chat-response.dto';
+import { TokenCapService } from '../observability/token-cap.service';
+import { LLMKillSwitchService } from '../llm-guard/llm-kill-switch.service';
+import { LLMResponseValidatorService } from '../llm-guard/llm-response-validator.service';
+import { LLMAuditService } from '../llm-guard/llm-audit.service';
 
 /** Helper to create a mock Express Response with SSE tracking */
 function mockResponse() {
@@ -135,6 +139,20 @@ describe('CopilotService', () => {
         { provide: SessionService, useValue: sessionService },
         { provide: RepoService, useValue: repoService },
         { provide: DataSource, useValue: { query: jest.fn() } },
+        // TokenCapService + LLM guard stubs. These were added to
+        // CopilotService's constructor across the Zero Trust series
+        // (Phase 9 token cap, Phase 4A/B kill switch + audit + validator)
+        // but the spec was never updated, so every test failed at
+        // NestJS DI before the test body ran.
+        { provide: TokenCapService, useValue: { guard: jest.fn(), recordUsage: jest.fn() } },
+        { provide: LLMKillSwitchService, useValue: { assertNotKilled: jest.fn() } },
+        {
+          provide: LLMResponseValidatorService,
+          useValue: {
+            validate: jest.fn((s: string) => ({ sanitized: s, redactions: {}, originalLength: s.length, truncated: false })),
+          },
+        },
+        { provide: LLMAuditService, useValue: { record: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 

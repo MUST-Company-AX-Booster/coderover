@@ -4,6 +4,7 @@ import { AgentService } from './agent.service';
 import { AgentRun, AgentType, AgentTrigger } from '../entities/agent-run.entity';
 import { HttpException, HttpStatus } from '@nestjs/common';
 import { SystemSetting } from '../entities/system-setting.entity';
+import { MetricsService } from '../observability/metrics.service';
 
 const mockAgentRunRepo = {
   create: jest.fn(),
@@ -33,6 +34,17 @@ describe('AgentService', () => {
         {
           provide: getRepositoryToken(SystemSetting),
           useValue: mockSettingRepo,
+        },
+        // MetricsService was added to AgentService's constructor without
+        // a corresponding spec update — DI failed at index [2] before
+        // any test body ran.
+        {
+          provide: MetricsService,
+          useValue: {
+            recordAgentRun: jest.fn(),
+            recordAgentRunDuration: jest.fn(),
+            recordAgentRunFailure: jest.fn(),
+          },
         },
       ],
     }).compile();

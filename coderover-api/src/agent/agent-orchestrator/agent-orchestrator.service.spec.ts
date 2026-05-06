@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AgentOrchestratorService } from './agent-orchestrator.service';
 import { AgentApprovalService } from '../agent-approval/agent-approval.service';
 import { AgentRefactorService } from '../agent-refactor/agent-refactor.service';
+import { EventsService } from '../../events/events.service';
 
 const mockApprovalService = {
   getApproval: jest.fn(),
@@ -23,6 +24,8 @@ describe('AgentOrchestratorService', () => {
         AgentOrchestratorService,
         { provide: AgentApprovalService, useValue: mockApprovalService },
         { provide: AgentRefactorService, useValue: mockRefactorService },
+        // EventsService dependency added without spec update.
+        { provide: EventsService, useValue: { emit: jest.fn() } },
       ],
     }).compile();
 

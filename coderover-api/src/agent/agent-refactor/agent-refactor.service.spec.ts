@@ -14,6 +14,7 @@ import { MemgraphService } from '../../graph/memgraph.service';
 import { LLMKillSwitchService } from '../../llm-guard/llm-kill-switch.service';
 import { LLMResponseValidatorService } from '../../llm-guard/llm-response-validator.service';
 import { LLMAuditService } from '../../llm-guard/llm-audit.service';
+import { TokenCapService } from '../../observability/token-cap.service';
 
 const mockChunkRepo = {
   createQueryBuilder: jest.fn(),
@@ -75,6 +76,8 @@ describe('AgentRefactorService', () => {
         { provide: GitHubService, useValue: mockGithubService },
         { provide: AdminConfigService, useValue: mockAdminConfigService },
         { provide: MemgraphService, useValue: mockMemgraphService },
+        // TokenCapService dependency was added without spec update.
+        { provide: TokenCapService, useValue: { guard: jest.fn(), recordUsage: jest.fn() } },
         { provide: LLMKillSwitchService, useValue: { assertNotKilled: jest.fn() } },
         {
           provide: LLMResponseValidatorService,

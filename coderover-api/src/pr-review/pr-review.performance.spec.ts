@@ -12,6 +12,11 @@ import { SearchService } from '../search/search.service';
 import { LLMKillSwitchService } from '../llm-guard/llm-kill-switch.service';
 import { LLMResponseValidatorService } from '../llm-guard/llm-response-validator.service';
 import { LLMAuditService } from '../llm-guard/llm-audit.service';
+import { EventsService } from '../events/events.service';
+import { GitHubAppService } from '../github-integration/github-app.service';
+import { GitHubTokenResolver } from '../github-integration/github-token-resolver.service';
+import { ConfidenceTaggerService } from '../graph/confidence-tagger.service';
+import { PrReviewFinding } from '../entities/pr-review-finding.entity';
 
 describe('PrReviewService Performance', () => {
   let service: PrReviewService;
@@ -107,6 +112,30 @@ describe('PrReviewService Performance', () => {
           },
         },
         { provide: LLMAuditService, useValue: { record: jest.fn().mockResolvedValue(undefined) } },
+        // Spec was missing several PrReviewService deps that landed in
+        // earlier phases.
+        {
+          provide: getRepositoryToken(PrReviewFinding),
+          useValue: {
+            create: jest.fn().mockImplementation((v: any) => v),
+            save: jest.fn().mockImplementation((v: any) => Promise.resolve({ id: 'finding-1', ...v })),
+            find: jest.fn().mockResolvedValue([]),
+          },
+        },
+        { provide: EventsService, useValue: { emit: jest.fn() } },
+        {
+          provide: GitHubAppService,
+          useValue: {
+            isConfigured: jest.fn().mockReturnValue(false),
+            createCheckRun: jest.fn(),
+            updateCheckRun: jest.fn(),
+          },
+        },
+        {
+          provide: GitHubTokenResolver,
+          useValue: { resolveFor: jest.fn().mockResolvedValue(null) },
+        },
+        ConfidenceTaggerService,
       ],
     }).compile();
 

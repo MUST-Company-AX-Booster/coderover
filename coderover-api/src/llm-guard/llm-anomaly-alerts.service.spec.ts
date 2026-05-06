@@ -254,4 +254,189 @@ describe('LLMAnomalyAlertsService', () => {
       expect((svc as unknown as { timer: NodeJS.Timeout | null }).timer).toBeNull();
     });
   });
+
+  describe('Phase 4D — cooldown', () => {
+    /**
+     * Build a repo that returns the same single token-rate breach on
+     * every sweep. Used to drive multi-sweep cooldown scenarios. Each
+     * sweep issues 3 createQueryBuilder calls (one per signal); we
+     * make the first of every triple return the breach.
+     */
+    function makeStableTokenRepo(): Repository<LLMAuditLog> {
+      let i = 0;
+      return {
+        createQueryBuilder: jest.fn(() => {
+          const tripletPosition = i++ % 3;
+          if (tripletPosition === 0) {
+            return makeQB([{ orgId: 'org-a', total: 200_000 }]);
+          }
+          return makeQB([], 0);
+        }),
+      } as unknown as Repository<LLMAuditLog>;
+    }
+
+    it('suppresses a repeat alert for the same (signal, scope) within the cooldown window', async () => {
+      const svc = new LLMAnomalyAlertsService(
+        makeStableTokenRepo(),
+        makeConfig({ ANOMALY_COOLDOWN_MINUTES: '30' }),
+      );
+      const first = await svc.runSweep();
+      const second = await svc.runSweep();
+      expect(first).toHaveLength(1);
+      expect(first[0].signal).toBe('llm_anomaly.token_rate_spike');
+      expect(second).toHaveLength(0);
+    });
+
+    it('re-fires the same alert once the cooldown elapses', async () => {
+      const svc = new LLMAnomalyAlertsService(
+        makeStableTokenRepo(),
+        makeConfig({ ANOMALY_COOLDOWN_MINUTES: '1' }),
+      );
+      const first = await svc.runSweep();
+      expect(first).toHaveLength(1);
+
+      // Reach into the private cooldownState and rewind by 2 minutes.
+      // Equivalent to "wait 2 minutes" but instant. Adjusting Date.now()
+      // globally would be more elegant but Jest fake timers don't
+      // compose well with the rest of the sweep's async path.
+      const state = (svc as unknown as { cooldownState: Map<string, number> }).cooldownState;
+      for (const [k, v] of state.entries()) state.set(k, v - 2 * 60_000);
+
+      const second = await svc.runSweep();
+      expect(second).toHaveLength(1);
+    });
+
+    it('treats different scopes as separate cooldown keys', async () => {
+      const svc = new LLMAnomalyAlertsService(
+        makeRepo({
+          tokenRows: [
+            { orgId: 'org-a', total: 250_000 },
+            { orgId: 'org-b', total: 110_000 },
+          ],
+        }),
+        makeConfig({ ANOMALY_COOLDOWN_MINUTES: '30' }),
+      );
+      const alerts = await svc.runSweep();
+      expect(alerts).toHaveLength(2);
+      expect(alerts.map((a) => a.scope)).toEqual([
+        { org_id: 'org-a' },
+        { org_id: 'org-b' },
+      ]);
+    });
+
+    it('disables cooldown entirely when ANOMALY_COOLDOWN_MINUTES=0', async () => {
+      const svc = new LLMAnomalyAlertsService(
+        makeStableTokenRepo(),
+        makeConfig({ ANOMALY_COOLDOWN_MINUTES: '0' }),
+      );
+      const first = await svc.runSweep();
+      const second = await svc.runSweep();
+      expect(first).toHaveLength(1);
+      expect(second).toHaveLength(1);
+    });
+  });
+
+  describe('Phase 4D — webhook sink', () => {
+    afterEach(() => {
+      delete (globalThis as { fetch?: unknown }).fetch;
+    });
+
+    it('does NOT call fetch when ANOMALY_WEBHOOK_URL is unset (logs-only mode)', async () => {
+      const fetchSpy = jest.fn();
+      (globalThis as { fetch: typeof fetch }).fetch = fetchSpy as unknown as typeof fetch;
+
+      const svc = new LLMAnomalyAlertsService(
+        makeRepo({ tokenRows: [{ orgId: 'org-a', total: 200_000 }] }),
+        makeConfig(),
+      );
+      const alerts = await svc.runSweep();
+      expect(alerts).toHaveLength(1);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('POSTs alert as JSON when ANOMALY_WEBHOOK_URL is set', async () => {
+      const fetchSpy = jest.fn().mockResolvedValue({ ok: true, status: 200, statusText: 'OK' });
+      (globalThis as { fetch: typeof fetch }).fetch = fetchSpy as unknown as typeof fetch;
+
+      const svc = new LLMAnomalyAlertsService(
+        makeRepo({ tokenRows: [{ orgId: 'org-a', total: 200_000 }] }),
+        makeConfig({ ANOMALY_WEBHOOK_URL: 'https://example.test/hook' }),
+      );
+      await svc.runSweep();
+      // fire-and-forget — wait one tick so the awaited fetch runs.
+      await new Promise((r) => setImmediate(r));
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchSpy.mock.calls[0];
+      expect(url).toBe('https://example.test/hook');
+      expect(init.method).toBe('POST');
+      expect(init.headers['Content-Type']).toBe('application/json');
+      const body = JSON.parse(init.body as string);
+      expect(body.signal).toBe('llm_anomaly.token_rate_spike');
+      expect(body.scope).toEqual({ org_id: 'org-a' });
+      expect(body.metric).toBe(200_000);
+    });
+
+    it('attaches Authorization header when ANOMALY_WEBHOOK_AUTH_HEADER is set', async () => {
+      const fetchSpy = jest.fn().mockResolvedValue({ ok: true, status: 200, statusText: 'OK' });
+      (globalThis as { fetch: typeof fetch }).fetch = fetchSpy as unknown as typeof fetch;
+
+      const svc = new LLMAnomalyAlertsService(
+        makeRepo({ tokenRows: [{ orgId: 'org-a', total: 200_000 }] }),
+        makeConfig({
+          ANOMALY_WEBHOOK_URL: 'https://example.test/hook',
+          ANOMALY_WEBHOOK_AUTH_HEADER: 'Bearer secret-token',
+        }),
+      );
+      await svc.runSweep();
+      await new Promise((r) => setImmediate(r));
+
+      const [, init] = fetchSpy.mock.calls[0];
+      expect(init.headers['Authorization']).toBe('Bearer secret-token');
+    });
+
+    it('warn-logs and swallows webhook failures (sweep continues)', async () => {
+      const fetchSpy = jest.fn().mockRejectedValue(new Error('connect ECONNREFUSED'));
+      (globalThis as { fetch: typeof fetch }).fetch = fetchSpy as unknown as typeof fetch;
+
+      const svc = new LLMAnomalyAlertsService(
+        makeRepo({ tokenRows: [{ orgId: 'org-a', total: 200_000 }] }),
+        makeConfig({ ANOMALY_WEBHOOK_URL: 'https://example.test/hook' }),
+      );
+      const warnSpy = jest
+        .spyOn((svc as unknown as { logger: { warn: (msg: string) => void } }).logger, 'warn')
+        .mockImplementation(() => undefined);
+
+      const alerts = await svc.runSweep();
+      expect(alerts).toHaveLength(1);
+
+      await new Promise((r) => setImmediate(r));
+      const messages = warnSpy.mock.calls.map((c) => String(c[0]));
+      expect(messages.some((m) => m.includes('Anomaly webhook POST failed'))).toBe(true);
+      expect(messages.some((m) => m.includes('connect ECONNREFUSED'))).toBe(true);
+    });
+
+    it('warn-logs non-2xx HTTP responses', async () => {
+      const fetchSpy = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+      });
+      (globalThis as { fetch: typeof fetch }).fetch = fetchSpy as unknown as typeof fetch;
+
+      const svc = new LLMAnomalyAlertsService(
+        makeRepo({ tokenRows: [{ orgId: 'org-a', total: 200_000 }] }),
+        makeConfig({ ANOMALY_WEBHOOK_URL: 'https://example.test/hook' }),
+      );
+      const warnSpy = jest
+        .spyOn((svc as unknown as { logger: { warn: (msg: string) => void } }).logger, 'warn')
+        .mockImplementation(() => undefined);
+
+      await svc.runSweep();
+      await new Promise((r) => setImmediate(r));
+
+      const messages = warnSpy.mock.calls.map((c) => String(c[0]));
+      expect(messages.some((m) => m.includes('returned 500'))).toBe(true);
+    });
+  });
 });

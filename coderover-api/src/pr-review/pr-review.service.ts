@@ -36,6 +36,12 @@ import {
   resolveLlmBaseUrl,
   resolveLlmProvider,
 } from '../config/openai.config';
+import {
+  LLMKillSwitchService,
+  LLMKillSwitchError,
+} from '../llm-guard/llm-kill-switch.service';
+import { LLMResponseValidatorService } from '../llm-guard/llm-response-validator.service';
+import { LLMAuditService } from '../llm-guard/llm-audit.service';
 
 export interface ReviewFinding {
   severity: 'critical' | 'warning' | 'suggestion' | 'info';
@@ -93,6 +99,9 @@ export class PrReviewService {
     private readonly githubAppService: GitHubAppService,
     private readonly tokenResolver: GitHubTokenResolver,
     private readonly confidenceTagger: ConfidenceTaggerService,
+    private readonly llmKillSwitch: LLMKillSwitchService,
+    private readonly llmValidator: LLMResponseValidatorService,
+    private readonly llmAudit: LLMAuditService,
   ) {
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
     const configuredBaseURL = this.configService.get<string>('OPENAI_BASE_URL');
@@ -816,9 +825,16 @@ Guidelines:
 - Score: 0-100 (100 = excellent, 0 = critical risk).`;
 
     const userPrompt = `Repository: ${repo}\n\n${diffSummary}`;
+    const promptText = `${systemPrompt}\n\n${userPrompt}`;
     const startedAt = new Date();
 
     try {
+      // Phase 4 (Zero Trust): kill switch first. The catch below will
+      // turn this into a `localFallbackAnalysis` result so PR review
+      // still produces *something* — degraded findings rather than a
+      // hard failure that leaves the PR un-reviewed.
+      this.llmKillSwitch.assertNotKilled();
+
       const response = this.llmProvider === 'local'
         ? await createLocalChatCompletion({
             apiKey: this.configService.get<string>('OPENAI_API_KEY'),
@@ -845,7 +861,29 @@ Guidelines:
       const usage = response.usage;
       const durationMs = completedAt.getTime() - startedAt.getTime();
 
-      const content = response.choices[0]?.message?.content ?? '{}';
+      const rawContent = response.choices[0]?.message?.content ?? '{}';
+
+      // Phase 4: scrub credential-shaped patterns from the model
+      // output before downstream code touches it. The validator's
+      // [REDACTED:TYPE] markers are JSON-safe (no special characters)
+      // so parsing the sanitized string still yields valid review JSON.
+      const validation = this.llmValidator.validate(rawContent);
+      const content = validation.sanitized;
+
+      void this.llmAudit.record({
+        orgId: currentOrgId() ?? null,
+        callSite: 'pr_review.analyse',
+        provider: this.llmProvider,
+        model: this.chatModel,
+        promptText,
+        responseText: rawContent,
+        promptTokens: usage?.prompt_tokens ?? null,
+        completionTokens: usage?.completion_tokens ?? null,
+        totalTokens: usage?.total_tokens ?? null,
+        latencyMs: durationMs,
+        redactions: validation.redactions,
+      });
+
       const parsed = this.parseAiContent(content);
 
       const aiFindings = Array.isArray(parsed.findings) ? parsed.findings : [];
@@ -881,11 +919,30 @@ Guidelines:
         },
       };
     } catch (err) {
-      this.logger.error(`AI analysis failed: ${err instanceof Error ? err.message : String(err)}`);
+      const killed = err instanceof LLMKillSwitchError;
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`AI analysis failed: ${errMsg}`);
+
+      // Phase 4: audit the failure (or kill-switch block) before falling
+      // back to the deterministic-only review path.
+      void this.llmAudit.record({
+        orgId: currentOrgId() ?? null,
+        callSite: 'pr_review.analyse',
+        provider: this.llmProvider,
+        model: this.chatModel,
+        promptText,
+        responseText: null,
+        latencyMs: Date.now() - startedAt.getTime(),
+        killSwitchBlocked: killed,
+        error: errMsg,
+      });
+
       const fallback = this.localFallbackAnalysis(
         prInfo,
         diffSummary,
-        `AI analysis failed (${this.llmProvider} provider).`,
+        killed
+          ? 'LLM_KILL_SWITCH engaged — degraded to deterministic findings only.'
+          : `AI analysis failed (${this.llmProvider} provider).`,
       );
 
       return {

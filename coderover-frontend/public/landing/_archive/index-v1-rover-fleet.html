@@ -1,0 +1,998 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>CodeRover — An autonomous rover fleet for your codebase</title>
+<meta name="description" content="Five autonomous AI rovers that review PRs, patrol security, refactor dead code, and remember every decision. MCP-native. Self-hosted. Ship faster." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+<style>
+/* ===== Bokeh (dafont.com) — self-hosted, display use only ===== */
+@font-face{
+  font-family: "Bokeh";
+  src: url("fonts/BOKEH.otf") format("opentype"),
+       url("fonts/BOKEH.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;   /* block so the bokeh wordmark never flashes in fallback */
+}
+
+/* ======================================================================
+   CodeRover · developer-facing one-pager (EN)
+   Priorities: scannable, proof-driven, real CLI, real benefits.
+   Less cinema, more ship.
+   ====================================================================== */
+
+:root{
+  --bone:     #EDEBE5;
+  --ink:      #D8D6CF;
+  --silver:   #8C8C87;
+  --line:     rgba(237, 235, 229, 0.10);
+  --line-hi:  rgba(237, 235, 229, 0.22);
+  --graphite: #1A1A1A;
+  --void:     #0A0A0A;
+  --black:    #050505;
+  --accent:   #E8E6E0;       /* high-contrast light */
+  --success:  #9FE0B4;       /* one tiny color accent, dev-signal only */
+  --danger:   #E89D9D;
+
+  --display:  "Bokeh", "Cormorant Garamond", serif;  /* wordmark only — dafont Bokeh */
+  --sans:     "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono:     "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+
+*{ box-sizing:border-box; margin:0; padding:0; }
+html,body{
+  background: var(--black);
+  color: var(--bone);
+  font-family: var(--sans);
+  font-weight: 400;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: 0.005em;
+}
+body{ overflow-x:hidden; }
+a{ color:inherit; text-decoration:none; }
+img{ display:block; max-width:100%; }
+
+/* subtle scanlines — dev mood without overwhelming content */
+body::before{
+  content:"";
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 90;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0,0,0,0) 0px,
+    rgba(0,0,0,0) 2px,
+    rgba(0,0,0,0.12) 3px,
+    rgba(0,0,0,0.12) 4px
+  );
+  mix-blend-mode: multiply;
+}
+
+/* ======== NAV =========================================================== */
+nav.top{
+  position: sticky; top: 0; z-index: 80;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 18px 28px;
+  backdrop-filter: blur(12px);
+  background: rgba(5,5,5,0.65);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .08em;
+}
+nav.top .logo{
+  font-family: var(--display);
+  font-size: 22px;
+  letter-spacing: .04em;
+  color: var(--bone);
+}
+nav.top .logo span{ color: var(--silver); }
+nav.top ul{
+  list-style: none; display: flex; gap: 28px; align-items: center;
+}
+nav.top ul a{
+  color: var(--silver);
+  transition: color .2s ease;
+}
+nav.top ul a:hover{ color: var(--bone); }
+nav.top .gh{
+  border: 1px solid var(--line-hi);
+  padding: 6px 14px;
+  color: var(--bone);
+  display: inline-flex; align-items:center; gap: 8px;
+}
+nav.top .gh:hover{ background: var(--bone); color: var(--void); border-color: var(--bone); }
+
+/* ======== HERO ========================================================== */
+.hero{
+  position: relative;
+  min-height: calc(100vh - 62px);
+  padding: 80px 28px 96px;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+  text-align: center;
+}
+/* ---- brand film background (replaces drifting bokeh motion) ------------ */
+.hero-bg{
+  position: absolute; inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: var(--black);   /* solid while video is loading */
+}
+.hero-bg video{
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  /* force B&W mood to match brand, slightly dimmed so wordmark reads clean */
+  filter: grayscale(1) contrast(1.12) brightness(0.72);
+}
+/* dark overlay above the film, below the scanlines & content */
+.hero-bg::after{
+  content: "";
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse at center, rgba(0,0,0,0.30) 0%, rgba(0,0,0,0.60) 70%, rgba(0,0,0,0.85) 100%),
+    linear-gradient(to bottom, rgba(0,0,0,0.25), rgba(0,0,0,0.55));
+  pointer-events: none;
+}
+
+.hero-inner{
+  position: relative; z-index: 1;
+  max-width: 980px;
+}
+.hero .kicker{
+  display: inline-block;
+  padding: 6px 14px;
+  border: 1px solid var(--line-hi);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--silver);
+  margin-bottom: 36px;
+}
+.hero .kicker b{ color: var(--success); font-weight: 500; margin-right: 8px; }
+
+.wordmark{
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: clamp(72px, 14vw, 200px);
+  line-height: .88;
+  letter-spacing: .02em;
+  color: var(--bone);
+  /* bokeh glow on the wordmark itself */
+  text-shadow:
+    0 0 40px  rgba(237,235,229,0.35),
+    0 0 80px  rgba(237,235,229,0.18),
+    0 0 140px rgba(237,235,229,0.08);
+  position: relative;
+}
+
+.hero h2{
+  margin-top: 32px;
+  font-family: var(--sans);
+  font-weight: 400;
+  font-size: clamp(20px, 2.4vw, 28px);
+  line-height: 1.4;
+  color: var(--bone);
+  max-width: 720px; margin-left:auto; margin-right:auto;
+}
+.hero h2 span{ color: var(--silver); }
+
+/* install command block */
+.install{
+  margin: 44px auto 0;
+  display: inline-flex; align-items: stretch;
+  border: 1px solid var(--line-hi);
+  background: rgba(237,235,229,0.03);
+  font-family: var(--mono);
+  font-size: 14px;
+  max-width: 100%;
+}
+.install .prompt{
+  padding: 14px 16px;
+  color: var(--silver);
+  border-right: 1px solid var(--line);
+  user-select: none;
+}
+.install code{
+  padding: 14px 18px;
+  color: var(--bone);
+  white-space: nowrap;
+}
+.install .copy{
+  padding: 0 18px;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  color: var(--silver);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all .2s;
+}
+.install .copy:hover{ background: var(--bone); color: var(--void); }
+
+.hero .cta-row{
+  margin-top: 28px;
+  display: flex; gap: 14px; justify-content: center; flex-wrap: wrap;
+}
+.btn{
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 14px 24px;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  border: 1px solid var(--bone);
+  color: var(--bone);
+  transition: all .2s ease;
+}
+.btn:hover{ background: var(--bone); color: var(--void); }
+.btn.ghost{ border-color: var(--line-hi); color: var(--silver); }
+.btn.ghost:hover{ border-color: var(--bone); color: var(--bone); background: transparent; }
+
+.hero .proof{
+  margin-top: 56px;
+  display: flex; justify-content: center; gap: 40px;
+  flex-wrap: wrap;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .15em;
+  color: var(--silver);
+  text-transform: uppercase;
+}
+.hero .proof b{ color: var(--bone); font-weight: 500; }
+
+/* ======== SHARED SECTIONS =============================================== */
+section.block{
+  padding: 120px 28px;
+  border-top: 1px solid var(--line);
+  position: relative;
+}
+.container{ max-width: 1240px; margin: 0 auto; }
+
+.eyebrow{
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .3em;
+  text-transform: uppercase;
+  color: var(--silver);
+  margin-bottom: 16px;
+}
+h2.title{
+  font-family: var(--sans);
+  font-weight: 500;
+  font-size: clamp(30px, 3.6vw, 44px);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--bone);
+  max-width: 22ch;
+  margin-bottom: 28px;
+}
+h2.title span{ color: var(--silver); font-weight: 300; }
+.lead{
+  max-width: 62ch;
+  font-size: 16px;
+  color: var(--silver);
+  margin-bottom: 56px;
+}
+
+/* ======== WHAT YOU GET — 3 column ======================================= */
+.grid-3{
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+.card{
+  border: 1px solid var(--line);
+  padding: 32px;
+  background: rgba(237,235,229,0.015);
+  display: flex; flex-direction: column;
+  transition: border-color .25s ease, background .25s ease;
+}
+.card:hover{ border-color: var(--line-hi); background: rgba(237,235,229,0.03); }
+.card .icon{
+  width: 36px; height: 36px;
+  margin-bottom: 24px;
+  color: var(--bone);
+}
+.card h3{
+  font-family: var(--sans);
+  font-weight: 500;
+  font-size: 20px;
+  margin-bottom: 10px;
+  color: var(--bone);
+}
+.card p{
+  font-size: 14px;
+  color: var(--silver);
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+.card .snippet{
+  margin-top: auto;
+  background: var(--void);
+  border: 1px solid var(--line);
+  padding: 14px 16px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.card .snippet .c{ color: var(--silver); }
+.card .snippet .ok{ color: var(--success); }
+.card .snippet .err{ color: var(--danger); }
+
+/* ======== FLEET (compact dev cards) ===================================== */
+.fleet-grid{
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border: 1px solid var(--line);
+  border-bottom: none;
+}
+.rover-cell{
+  padding: 28px 22px 32px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  display: flex; flex-direction: column;
+  min-height: 300px;
+}
+.rover-cell:last-child{ border-right: none; }
+.rover-cell .tag{
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .25em;
+  color: var(--silver);
+  margin-bottom: 18px;
+  text-transform: uppercase;
+}
+.rover-cell h4{
+  font-family: var(--sans);
+  font-weight: 500;
+  font-size: 22px;
+  color: var(--bone);
+  margin-bottom: 6px;
+}
+.rover-cell .role{
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--silver);
+  margin-bottom: 18px;
+  letter-spacing: .05em;
+}
+.rover-cell p{
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.55;
+  margin-bottom: auto;
+}
+.rover-cell .cmd{
+  margin-top: 20px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--silver);
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.rover-cell .cmd b{ color: var(--bone); font-weight: 500; }
+
+/* ======== TERMINAL SHOWCASE ============================================ */
+.terminal-wrap{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 56px;
+  align-items: center;
+}
+.terminal{
+  background: var(--void);
+  border: 1px solid var(--line-hi);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink);
+  box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(237,235,229,0.02) inset;
+}
+.terminal .bar{
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--silver);
+  letter-spacing: .12em;
+}
+.terminal .bar .dots{ display:flex; gap:6px; }
+.terminal .bar .dots i{
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #3a3a3a; display: inline-block;
+}
+.terminal .body{
+  padding: 22px 22px 26px;
+  overflow-x: auto;
+}
+.terminal .line{ white-space: pre; }
+.terminal .c{ color: var(--silver); }
+.terminal .p{ color: var(--silver); user-select:none; }
+.terminal .ok{ color: var(--success); }
+.terminal .w{ color: #EDD89D; }
+.terminal .e{ color: var(--danger); }
+.terminal .b{ color: var(--bone); }
+
+.tx-copy h3{
+  font-family: var(--sans);
+  font-weight: 500;
+  font-size: 28px;
+  margin-bottom: 18px;
+  color: var(--bone);
+}
+.tx-copy p{
+  color: var(--silver);
+  font-size: 15px;
+  margin-bottom: 20px;
+}
+.tx-copy ul{
+  list-style: none; padding: 0;
+}
+.tx-copy li{
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--line);
+  font-size: 14px;
+  color: var(--ink);
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+}
+.tx-copy li::before{
+  content: "›";
+  color: var(--silver);
+  font-family: var(--mono);
+  font-size: 14px;
+}
+.tx-copy li b{
+  color: var(--bone);
+  font-weight: 500;
+}
+
+/* ======== BENEFITS (numbered grid) ===================================== */
+.benefits{
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 48px 56px;
+}
+.benefit .num{
+  font-family: var(--display);
+  font-size: 56px;
+  line-height: 1;
+  color: var(--bone);
+  text-shadow: 0 0 30px rgba(237,235,229,0.25);
+  margin-bottom: 12px;
+}
+.benefit h4{
+  font-family: var(--sans);
+  font-weight: 500;
+  font-size: 18px;
+  color: var(--bone);
+  margin-bottom: 8px;
+}
+.benefit p{
+  font-size: 14px;
+  color: var(--silver);
+  line-height: 1.6;
+}
+
+/* ======== INTEGRATIONS ================================================= */
+.integrations{
+  display: flex; flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-right: none; border-bottom: none;
+}
+.integ{
+  flex: 1 0 20%;
+  padding: 36px 24px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .12em;
+  color: var(--silver);
+  transition: color .2s ease, background .2s ease;
+  min-width: 180px;
+}
+.integ b{
+  display: block;
+  font-family: var(--sans);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--bone);
+  margin-bottom: 6px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.integ:hover{ color: var(--bone); background: rgba(237,235,229,0.03); }
+
+/* ======== COMPARE TABLE (compact) ===================================== */
+.compare{
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.compare th, .compare td{
+  padding: 16px 18px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.compare thead th{
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .18em;
+  color: var(--silver);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--line-hi);
+}
+.compare tbody td{ color: var(--ink); }
+.compare tbody td:first-child{ color: var(--bone); font-weight: 500; }
+.compare .yes{ color: var(--success); }
+.compare .no{ color: var(--silver); }
+.compare .us{ background: rgba(237,235,229,0.04); }
+
+/* ======== CTA FOOTER =================================================== */
+.final-cta{
+  padding: 140px 28px;
+  text-align: center;
+  border-top: 1px solid var(--line);
+  position: relative;
+  overflow: hidden;
+}
+/* reuse hero-bg on the closing section, slightly darker overlay for focus */
+.final-cta .hero-bg::after{
+  background:
+    radial-gradient(ellipse at center, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.75) 70%, rgba(0,0,0,0.92) 100%);
+}
+.final-cta h3{
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: clamp(48px, 9vw, 120px);
+  line-height: 1;
+  letter-spacing: .02em;
+  color: var(--bone);
+  text-shadow:
+    0 0 40px  rgba(237,235,229,0.3),
+    0 0 80px  rgba(237,235,229,0.15);
+  margin-bottom: 20px;
+  position: relative; z-index: 1;
+}
+.final-cta p{
+  color: var(--silver);
+  font-size: 17px;
+  max-width: 44ch;
+  margin: 0 auto 32px;
+  position: relative; z-index: 1;
+}
+.final-cta .cta-row{
+  position: relative; z-index: 1;
+  display: flex; justify-content: center; gap: 14px; flex-wrap: wrap;
+}
+
+footer.site{
+  padding: 40px 28px;
+  border-top: 1px solid var(--line);
+  display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--silver);
+  letter-spacing: .1em;
+}
+footer.site .logo{
+  font-family: var(--display);
+  font-size: 18px;
+  color: var(--bone);
+  letter-spacing: .04em;
+}
+footer.site ul{
+  list-style:none; display:flex; gap: 24px; align-items:center;
+}
+footer.site ul a:hover{ color: var(--bone); }
+
+/* ======== responsive =================================================== */
+@media (max-width: 960px){
+  .grid-3{ grid-template-columns: 1fr; }
+  .fleet-grid{ grid-template-columns: repeat(2, 1fr); }
+  .rover-cell:nth-child(2n){ border-right: none; }
+  .terminal-wrap{ grid-template-columns: 1fr; gap: 40px; }
+  .benefits{ grid-template-columns: 1fr 1fr; gap: 36px 28px; }
+  nav.top ul{ display: none; }
+}
+@media (max-width: 560px){
+  .fleet-grid{ grid-template-columns: 1fr; }
+  .rover-cell{ border-right: none; }
+  .benefits{ grid-template-columns: 1fr; }
+  .hero .proof{ gap: 20px; }
+  .install{ flex-direction: column; font-size: 12px; }
+  .install .prompt{ border-right: none; border-bottom: 1px solid var(--line); }
+  .install .copy{ border-left: none; border-top: 1px solid var(--line); padding: 10px; }
+}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{ animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- ======================= NAV ======================= -->
+<nav class="top">
+  <a class="logo" href="#">Code<span>Rover</span></a>
+  <ul>
+    <li><a href="#features">Features</a></li>
+    <li><a href="#fleet">Fleet</a></li>
+    <li><a href="#cli">CLI</a></li>
+    <li><a href="#integrations">Integrations</a></li>
+    <li><a href="#">Docs</a></li>
+    <li><a class="gh" href="#">★ GitHub</a></li>
+  </ul>
+</nav>
+
+<!-- ======================= HERO ======================= -->
+<section class="hero">
+  <div class="hero-bg" aria-hidden="true">
+    <video autoplay muted loop playsinline preload="metadata" poster="image/scene_05_hero_formation.png">
+      <!-- webm first: smaller file, less server traffic -->
+      <source src="cr_video.webm" type="video/webm" />
+      <!-- mp4 fallback: maximum browser compatibility -->
+      <source src="cr_video.mp4"  type="video/mp4" />
+    </video>
+  </div>
+
+  <div class="hero-inner">
+    <div class="kicker"><b>● Live</b>v1.0 · MCP-native · self-hostable</div>
+    <h1 class="wordmark">CODEROVER</h1>
+    <h2>Five autonomous rovers that <span>review your PRs, patrol your security, refactor your dead code, and remember every decision</span> — so you can ship instead of babysit.</h2>
+
+    <div class="install">
+      <span class="prompt">$</span>
+      <code>npm install -g coderover &amp;&amp; rover land</code>
+      <button class="copy" onclick="navigator.clipboard?.writeText('npm install -g coderover &amp;&amp; rover land')">Copy</button>
+    </div>
+
+    <div class="cta-row">
+      <a class="btn" href="#">Get Started →</a>
+      <a class="btn ghost" href="#">Read the Docs</a>
+    </div>
+
+    <div class="proof">
+      <div><b>1st PR review</b> in ≤ 2 min</div>
+      <div><b>Onboarding</b> 3 mo → 2 wk</div>
+      <div><b>Secrets caught</b> pre-commit</div>
+      <div><b>Self-hosted</b> · your code never leaves</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ======================= FEATURES ======================= -->
+<section class="block" id="features">
+  <div class="container">
+    <p class="eyebrow">§ Features</p>
+    <h2 class="title">Built for the things that <span>actually slow you down.</span></h2>
+    <p class="lead">CodeRover doesn't replace your editor or your CI. It runs alongside them as an autonomous fleet — reading your graph, patrolling your repo, proposing fixes, and remembering context across months. You approve. It ships.</p>
+
+    <div class="grid-3">
+
+      <div class="card">
+        <svg class="icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6">
+          <path d="M6 14l6 6 14-14"/>
+          <path d="M6 24h20"/>
+        </svg>
+        <h3>Autonomous PR review</h3>
+        <p>Every pull request gets a first-pass review in under two minutes — style, logic, blast-radius, and test coverage. You read comments, not diffs.</p>
+        <div class="snippet">
+<span class="c">[scout]</span> PR #412 · reviewed in <span class="ok">1.8s</span> · <span class="ok">2 findings</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <svg class="icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6">
+          <path d="M16 3l12 6v9c0 7-5 12-12 14-7-2-12-7-12-14V9z"/>
+          <path d="M11 16l4 4 7-8"/>
+        </svg>
+        <h3>Pre-commit security</h3>
+        <p>Sentinel patrols 24/7 for hardcoded secrets, missing auth, and policy drift. Violations are caught at commit, not after deploy.</p>
+        <div class="snippet">
+<span class="c">[sentinel]</span> <span class="err">BLOCK</span> api_key hardcoded @ src/auth.ts:42
+        </div>
+      </div>
+
+      <div class="card">
+        <svg class="icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6">
+          <circle cx="16" cy="16" r="12"/>
+          <path d="M16 8v8l5 3"/>
+        </svg>
+        <h3>Refactor on autopilot</h3>
+        <p>Tinker finds 200-line functions, circular deps, and dead code — then drafts the refactor PR. You approve or toss. Zero cold starts.</p>
+        <div class="snippet">
+<span class="c">[tinker]</span> proposed 3 refactors · <span class="ok">+4% test cov</span> · <span class="b">awaiting review</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ======================= FLEET ======================= -->
+<section class="block" id="fleet">
+  <div class="container">
+    <p class="eyebrow">§ The Fleet</p>
+    <h2 class="title">Five specialists. <span>One MCP endpoint.</span></h2>
+    <p class="lead">Not one bloated agent. Five focused ones. Each rover has a narrow job, a tight prompt, and a clean CLI. Mix-and-match or deploy the fleet.</p>
+
+    <div class="fleet-grid">
+
+      <div class="rover-cell">
+        <div class="tag">Unit 01</div>
+        <h4>Scout</h4>
+        <div class="role">pr-review agent</div>
+        <p>Reviews every PR the moment it opens. Flags style, logic, and cross-module blast radius. Runs as a GitHub App or a git hook.</p>
+        <div class="cmd">› <b>rover scout</b> --watch</div>
+      </div>
+
+      <div class="rover-cell">
+        <div class="tag">Unit 02</div>
+        <h4>Tinker</h4>
+        <div class="role">refactor agent</div>
+        <p>Hunts long functions, circular deps, and duplicated logic. Writes the fix as a draft PR. Human approval required.</p>
+        <div class="cmd">› <b>rover tinker</b> --propose</div>
+      </div>
+
+      <div class="rover-cell">
+        <div class="tag">Unit 03</div>
+        <h4>Sentinel</h4>
+        <div class="role">security agent</div>
+        <p>Real-time patrol for secrets, missing auth, PII in logs. Ships with 40+ rules; register your own in YAML.</p>
+        <div class="cmd">› <b>rover sentinel</b> --strict</div>
+      </div>
+
+      <div class="rover-cell">
+        <div class="tag">Unit 04</div>
+        <h4>Beacon</h4>
+        <div class="role">health-report agent</div>
+        <p>Weekly code-health digest: risk modules, trending metrics, merged fixes. Drops into Slack or email.</p>
+        <div class="cmd">› <b>rover beacon</b> --weekly</div>
+      </div>
+
+      <div class="rover-cell">
+        <div class="tag">Unit 05</div>
+        <h4>Archive</h4>
+        <div class="role">decision-memory agent</div>
+        <p>Persistent memory of every architectural decision. New devs ask "why did we drop Redis?" and get the real answer.</p>
+        <div class="cmd">› <b>rover archive</b> --ask</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ======================= CLI / TERMINAL SHOWCASE ======================= -->
+<section class="block" id="cli">
+  <div class="container">
+    <p class="eyebrow">§ Under 60 seconds</p>
+    <h2 class="title">One command. <span>A full fleet deployed.</span></h2>
+
+    <div class="terminal-wrap">
+
+      <div class="terminal">
+        <div class="bar">
+          <div class="dots"><i></i><i></i><i></i></div>
+          <div>~/my-app — rover</div>
+        </div>
+        <div class="body">
+<div class="line"><span class="p">$</span> <span class="b">rover land</span> https://github.com/your-org/your-repo</div>
+<div class="line"><span class="c">  ↓ authenticating mission control...          <span class="ok">ok</span></span></div>
+<div class="line"><span class="c">  ↓ indexing 1,247 modules (312k LoC)...       <span class="ok">ok</span></span></div>
+<div class="line"><span class="c">  ↓ building dependency graph...               <span class="ok">ok</span></span></div>
+<div class="line"><span class="c">  ↓ spawning fleet [scout tinker sentinel beacon archive]</span></div>
+<div class="line"><span class="ok">  ✓ fleet landed in 47s</span></div>
+<div class="line"> </div>
+<div class="line"><span class="p">$</span> <span class="b">rover status</span></div>
+<div class="line"><span class="c">  [scout]    </span>online  · watching 4 open PRs</div>
+<div class="line"><span class="c">  [tinker]   </span>online  · 8 refactor proposals pending</div>
+<div class="line"><span class="c">  [sentinel] </span>online  · <span class="w">2 findings</span> (low severity)</div>
+<div class="line"><span class="c">  [beacon]   </span>armed   · next downlink in 3d</div>
+<div class="line"><span class="c">  [archive]  </span>online  · 47 decisions logged</div>
+<div class="line"> </div>
+<div class="line"><span class="p">$</span> <span class="b">rover ask</span> "why did we drop the redis cache?"</div>
+<div class="line"><span class="c">  [archive] Found in commit 9a3f12c · 2025-03-14</span></div>
+<div class="line"><span class="c">  "Latency spike under load wasn't Redis — it was cold</span></div>
+<div class="line"><span class="c">   starts on the worker pool. Reverted to in-process LRU."</span></div>
+<div class="line"><span class="c">  — signed off by @maya, decision #DR-0032</span></div>
+        </div>
+      </div>
+
+      <div class="tx-copy">
+        <h3>Everything dev-friendly.</h3>
+        <p>No vendor lock-in. No "contact sales." Local binary, MCP protocol, plain text logs.</p>
+        <ul>
+          <li><span><b>Self-hosted by default</b> — runs in your cluster, your laptop, or your CI. Code never leaves.</span></li>
+          <li><span><b>MCP-native</b> — plug into Cursor, Claude Desktop, VS Code, or anything that speaks MCP.</span></li>
+          <li><span><b>Plain-text everything</b> — logs, reports, config. Grep it, pipe it, diff it.</span></li>
+          <li><span><b>Model-agnostic</b> — Claude, GPT, local Llama. Point at any OpenAI-compatible endpoint.</span></li>
+          <li><span><b>Human-in-the-loop</b> — rovers propose, you approve. No silent writes to main.</span></li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ======================= BENEFITS ======================= -->
+<section class="block">
+  <div class="container">
+    <p class="eyebrow">§ What it buys you</p>
+    <h2 class="title">Less babysitting. <span>More shipping.</span></h2>
+
+    <div class="benefits">
+      <div class="benefit">
+        <div class="num">10×</div>
+        <h4>Faster first PR review</h4>
+        <p>Minutes instead of days. Scout runs while your reviewer is still in a meeting.</p>
+      </div>
+      <div class="benefit">
+        <div class="num">6×</div>
+        <h4>Faster onboarding</h4>
+        <p>New devs ship their first PR in 2 weeks, not 3 months — Archive answers the "why" questions for them.</p>
+      </div>
+      <div class="benefit">
+        <div class="num">0</div>
+        <h4>Secrets in production</h4>
+        <p>Sentinel intercepts at commit time. What can't push can't leak.</p>
+      </div>
+      <div class="benefit">
+        <div class="num">24/7</div>
+        <h4>Patrol coverage</h4>
+        <p>No sleep, no weekends. Your repo is monitored even while the team is offline.</p>
+      </div>
+      <div class="benefit">
+        <div class="num">∞</div>
+        <h4>Institutional memory</h4>
+        <p>Every architectural decision is recorded and queryable in natural language, forever.</p>
+      </div>
+      <div class="benefit">
+        <div class="num">100%</div>
+        <h4>On your own infra</h4>
+        <p>Self-host the whole fleet. No third-party API hop. BYO model endpoint.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ======================= COMPARE ======================= -->
+<section class="block">
+  <div class="container">
+    <p class="eyebrow">§ Why not just X?</p>
+    <h2 class="title">We don't compete with your tools. <span>We orchestrate them.</span></h2>
+
+    <table class="compare">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Copilot / Cursor</th>
+          <th>Sourcegraph</th>
+          <th>Snyk · Sonar</th>
+          <th class="us">CodeRover</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Autonomous PR review</td>
+          <td class="no">—</td>
+          <td class="no">—</td>
+          <td class="no">—</td>
+          <td class="yes us">✓ Scout</td>
+        </tr>
+        <tr>
+          <td>Refactor proposals (as PRs)</td>
+          <td class="no">manual</td>
+          <td class="no">—</td>
+          <td class="no">—</td>
+          <td class="yes us">✓ Tinker</td>
+        </tr>
+        <tr>
+          <td>Security patrol</td>
+          <td class="no">—</td>
+          <td class="no">—</td>
+          <td class="yes">✓</td>
+          <td class="yes us">✓ Sentinel</td>
+        </tr>
+        <tr>
+          <td>Decision memory (persistent)</td>
+          <td class="no">—</td>
+          <td class="no">—</td>
+          <td class="no">—</td>
+          <td class="yes us">✓ Archive</td>
+        </tr>
+        <tr>
+          <td>MCP-native</td>
+          <td class="no">—</td>
+          <td class="no">—</td>
+          <td class="no">—</td>
+          <td class="yes us">✓</td>
+        </tr>
+        <tr>
+          <td>Self-hosted</td>
+          <td class="no">—</td>
+          <td class="yes">✓</td>
+          <td class="yes">✓</td>
+          <td class="yes us">✓</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+<!-- ======================= INTEGRATIONS ======================= -->
+<section class="block" id="integrations">
+  <div class="container">
+    <p class="eyebrow">§ Plugs into everything you already use</p>
+    <h2 class="title">Ships where <span>your team already is.</span></h2>
+
+    <div class="integrations">
+      <div class="integ"><b>MCP</b>Model Context Protocol</div>
+      <div class="integ"><b>Cursor</b>IDE</div>
+      <div class="integ"><b>Claude Desktop</b>Agent</div>
+      <div class="integ"><b>VS Code</b>Extension</div>
+      <div class="integ"><b>GitHub</b>App / Actions</div>
+      <div class="integ"><b>GitLab</b>CI hook</div>
+      <div class="integ"><b>Slack</b>Beacon downlink</div>
+      <div class="integ"><b>Linear</b>Issue sync</div>
+      <div class="integ"><b>Datadog</b>Metrics export</div>
+      <div class="integ"><b>Docker</b>Self-host</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ======================= FINAL CTA ======================= -->
+<section class="final-cta">
+  <div class="hero-bg" aria-hidden="true">
+    <video autoplay muted loop playsinline preload="metadata" poster="image/scene_05_hero_formation.png">
+      <source src="cr_video.webm" type="video/webm" />
+      <source src="cr_video.mp4"  type="video/mp4" />
+    </video>
+  </div>
+  <h3>Land the fleet.</h3>
+  <p>One command. Five rovers. Your codebase finally has a team watching it around the clock.</p>
+  <div class="cta-row">
+    <a class="btn" href="#">Get Started →</a>
+    <a class="btn ghost" href="#">★ Star on GitHub</a>
+  </div>
+</section>
+
+<footer class="site">
+  <div class="logo">Code<span style="color:var(--silver);">Rover</span></div>
+  <ul>
+    <li><a href="#">Docs</a></li>
+    <li><a href="#">Changelog</a></li>
+    <li><a href="#">Roadmap</a></li>
+    <li><a href="#">GitHub</a></li>
+    <li><a href="#">Discord</a></li>
+  </ul>
+  <div>© 2026 · Fleet 0001 · MIT License</div>
+</footer>
+
+</body>
+</html>

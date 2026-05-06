@@ -7,6 +7,8 @@ import { EmbedderService } from './embedder.service';
 import { ChunkResult } from './chunker.service';
 import { EdgeProducerAudit } from '../entities/edge-producer-audit.entity';
 import { ConfidenceTaggerService } from '../graph/confidence-tagger.service';
+import { LLMKillSwitchService } from '../llm-guard/llm-kill-switch.service';
+import { LLMAuditService } from '../llm-guard/llm-audit.service';
 
 // Mock OpenAI
 jest.mock('openai', () => {
@@ -76,6 +78,8 @@ describe('EmbedderService', () => {
           useValue: { insert: jest.fn().mockResolvedValue(undefined) },
         },
         ConfidenceTaggerService,
+        { provide: LLMKillSwitchService, useValue: { assertNotKilled: jest.fn() } },
+        { provide: LLMAuditService, useValue: { record: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 

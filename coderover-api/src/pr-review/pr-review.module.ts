@@ -12,6 +12,7 @@ import { GraphModule } from '../graph/graph.module';
 import { SearchModule } from '../search/search.module';
 import { EventsModule } from '../events/events.module';
 import { GitHubIntegrationModule } from '../github-integration/github-integration.module';
+import { LLMGuardModule } from '../llm-guard/llm-guard.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { GitHubIntegrationModule } from '../github-integration/github-integratio
     SearchModule,
     EventsModule,
     GitHubIntegrationModule,
+    LLMGuardModule,
     BullModule.registerQueue(
       { name: 'ingest' },
       { name: 'agent-pr-review' },

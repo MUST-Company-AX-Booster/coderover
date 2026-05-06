@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { useAuthStore } from './stores/authStore';
@@ -39,6 +39,28 @@ function PageLoader() {
   );
 }
 
+/**
+ * RootRedirect — handles `/` and the catch-all `*`.
+ *   - Authenticated  → React-Router-Navigate to /dashboard.
+ *   - Anonymous      → full-document swap to /landing/ (static marketing
+ *     HTML in public/landing/, outside React Router's reach).
+ *
+ * useEffect guards the side-effect so render stays pure; we render
+ * null while the navigation lands.
+ */
+function RootRedirect({ isAuthenticated }: { isAuthenticated: boolean }) {
+  useEffect(() => {
+    if (!isAuthenticated) {
+      window.location.replace('/landing/');
+    }
+  }, [isAuthenticated]);
+
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return null;
+}
+
 function App() {
   const { isAuthenticated } = useAuthStore();
   const { theme } = useThemeStore();
@@ -59,6 +81,9 @@ function App() {
           <Route path="/auth/github/callback" element={<GithubCallbackPage />} />
           <Route path="/design-system" element={<DesignSystemPage />} />
 
+          {/* Root: anon → /landing/ (static), authed → /dashboard */}
+          <Route path="/" element={<RootRedirect isAuthenticated={isAuthenticated} />} />
+
           {/* Protected routes */}
           <Route element={<ProtectedRoute />}>
             <Route element={<Layout />}>
@@ -77,12 +102,11 @@ function App() {
               <Route path="/operations" element={<ErrorBoundary><RequireRole role="admin"><OperationsPage /></RequireRole></ErrorBoundary>} />
               <Route path="/settings" element={<ErrorBoundary><RequireRole role="admin"><SettingsPage /></RequireRole></ErrorBoundary>} />
               <Route path="/orgs" element={<ErrorBoundary><OrgsPage /></ErrorBoundary>} />
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
             </Route>
           </Route>
 
-          {/* Catch all route */}
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          {/* Catch all: same branching logic as `/` */}
+          <Route path="*" element={<RootRedirect isAuthenticated={isAuthenticated} />} />
         </Routes>
       </BrowserRouter>
       

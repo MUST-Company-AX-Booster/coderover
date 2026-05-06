@@ -24,6 +24,7 @@ import { EventsModule } from '../events/events.module';
 import { ObservabilityModule } from '../observability/observability.module';
 import { GitHubIntegrationModule } from '../github-integration/github-integration.module';
 import { CacheModule } from '../cache/cache.module';
+import { LLMGuardModule } from '../llm-guard/llm-guard.module';
 import { IncrementalIngestService } from './incremental-ingest.service';
 import { WatchDaemonService } from './watch-daemon.service';
 import { TokenCapService } from './token-cap.service';
@@ -48,6 +49,7 @@ import { WatchProcessorFactory } from './watch-processor.factory';
     ObservabilityModule,
     GitHubIntegrationModule,
     CacheModule,
+    LLMGuardModule,
   ],
   controllers: [IngestController],
   providers: [

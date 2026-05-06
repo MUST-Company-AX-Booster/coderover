@@ -9,6 +9,9 @@ import { Repo } from '../entities/repo.entity';
 import { GitHubService } from '../ingest/github.service';
 import { MemgraphService } from '../graph/memgraph.service';
 import { SearchService } from '../search/search.service';
+import { LLMKillSwitchService } from '../llm-guard/llm-kill-switch.service';
+import { LLMResponseValidatorService } from '../llm-guard/llm-response-validator.service';
+import { LLMAuditService } from '../llm-guard/llm-audit.service';
 
 describe('PrReviewService Performance', () => {
   let service: PrReviewService;
@@ -96,6 +99,14 @@ describe('PrReviewService Performance', () => {
         },
         { provide: MemgraphService, useValue: { readQuery: jest.fn().mockResolvedValue([]) } },
         { provide: SearchService, useValue: { search: jest.fn().mockResolvedValue([]) } },
+        { provide: LLMKillSwitchService, useValue: { assertNotKilled: jest.fn() } },
+        {
+          provide: LLMResponseValidatorService,
+          useValue: {
+            validate: jest.fn((s: string) => ({ sanitized: s, redactions: {}, originalLength: s.length, truncated: false })),
+          },
+        },
+        { provide: LLMAuditService, useValue: { record: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 

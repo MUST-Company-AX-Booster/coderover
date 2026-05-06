@@ -9,6 +9,8 @@ import { createLocalEmbeddings, resolveLlmBaseUrl, resolveLlmProvider } from '..
 import { ConfidenceTaggerService } from '../graph/confidence-tagger.service';
 import { EdgeProducerAudit } from '../entities/edge-producer-audit.entity';
 import { computeEdgeId, computeNodeId } from '../graph/deterministic-ids';
+import { LLMKillSwitchService } from '../llm-guard/llm-kill-switch.service';
+import { LLMAuditService } from '../llm-guard/llm-audit.service';
 
 export interface EmbedResult {
   chunksProcessed: number;
@@ -55,6 +57,8 @@ export class EmbedderService {
     @InjectRepository(EdgeProducerAudit)
     private readonly edgeAuditRepo: Repository<EdgeProducerAudit>,
     private readonly confidenceTagger: ConfidenceTaggerService,
+    private readonly llmKillSwitch: LLMKillSwitchService,
+    private readonly llmAudit: LLMAuditService,
   ) {
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
     const configuredBaseURL = this.configService.get<string>('OPENAI_BASE_URL');
@@ -232,6 +236,34 @@ export class EmbedderService {
     const dimensions = await this.resolveEmbeddingDimensions();
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
 
+    // Phase 4 (Zero Trust) — gate every batch through the kill switch
+    // BEFORE the retry loop. If an operator engages the switch mid-run,
+    // the next batch hits the throw and degrades to BM25-only via the
+    // catch in embedRepoChunks (null embeddings + warn log). Inside the
+    // retry loop would re-check on every attempt, which is wasteful and
+    // could mask the engagement signal.
+    try {
+      this.llmKillSwitch.assertNotKilled();
+    } catch (err) {
+      const promptText = texts.join('\n');
+      void this.llmAudit.record({
+        callSite: 'embedder.batch',
+        provider: this.llmProvider,
+        model: this.embeddingModel,
+        promptText,
+        responseText: null,
+        killSwitchBlocked: true,
+        error: (err as Error).message,
+      });
+      throw err;
+    }
+
+    // Concatenate inputs once for the audit row's prompt-hash. The
+    // batch shape (1 to BATCH_SIZE strings) is stable across retries,
+    // so we hash the full concatenation regardless of attempt count.
+    const promptText = texts.join('\n');
+    const startTime = Date.now();
+
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
         const response = this.llmProvider === 'local'
@@ -274,10 +306,38 @@ export class EmbedderService {
           }
         }
 
+        // Phase 4B: success audit. Embeddings are vectors, not text —
+        // responseText stays null so the audit row records the call's
+        // existence + token usage but not a meaningless hash of "[1,2,3,...]".
+        // The provider's usage object is OpenAI-shaped; the local branch
+        // returns its own shape and may not populate `usage`.
+        const usage = (response as { usage?: { prompt_tokens?: number; total_tokens?: number } }).usage;
+        void this.llmAudit.record({
+          callSite: 'embedder.batch',
+          provider: this.llmProvider,
+          model: this.embeddingModel,
+          promptText,
+          responseText: null,
+          promptTokens: usage?.prompt_tokens ?? null,
+          totalTokens: usage?.total_tokens ?? null,
+          latencyMs: Date.now() - startTime,
+        });
+
         return { embeddings, dimensions: actualDimensions };
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
         if (lastError instanceof EmbeddingDimensionMismatchError) {
+          // Dimension mismatch is a terminal config error, not a transient
+          // network blip. Audit it once and propagate.
+          void this.llmAudit.record({
+            callSite: 'embedder.batch',
+            provider: this.llmProvider,
+            model: this.embeddingModel,
+            promptText,
+            responseText: null,
+            latencyMs: Date.now() - startTime,
+            error: lastError.message,
+          });
           throw lastError;
         }
         const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt);
@@ -288,6 +348,19 @@ export class EmbedderService {
       }
     }
 
+    // All retries exhausted — record one terminal-failure audit row
+    // before propagating. Each attempt within the retry loop intentionally
+    // does NOT audit (would explode the table on a flaky provider); we
+    // only persist the final outcome.
+    void this.llmAudit.record({
+      callSite: 'embedder.batch',
+      provider: this.llmProvider,
+      model: this.embeddingModel,
+      promptText,
+      responseText: null,
+      latencyMs: Date.now() - startTime,
+      error: lastError ? lastError.message : 'Embedding failed after max retries',
+    });
     throw lastError || new Error('Embedding failed after max retries');
   }
 

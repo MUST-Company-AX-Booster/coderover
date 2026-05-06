@@ -4,11 +4,18 @@ Phase 4A target: give the on-call operator a one-flip lever to stop every
 outbound LLM call across the api, **without an api redeploy**.
 
 This document is the response procedure. The code is in
-`coderover-api/src/llm-guard/llm-kill-switch.service.ts` and the
-integration today is `CopilotService` (the user-facing chat surface).
-Other call sites are wired in subsequent PRs and, until then, will
-continue to call the LLM provider even with the switch engaged — so this
-is currently a "stop chat" lever, not a complete blackout.
+`coderover-api/src/llm-guard/llm-kill-switch.service.ts`. As of the
+guard-coverage extension, the kill switch + audit log + response
+validator are wired into every outbound LLM call site:
+
+  - `CopilotService` — user-facing chat
+  - `EmbedderService` — ingest-time embeddings
+  - `PrReviewService` — PR review LLM analysis
+  - `AgentRefactorService` — risk validation + refactor file generation
+
+Engaging the switch produces a complete blackout of outbound LLM
+traffic. Each surface degrades differently (see "Per-surface behavior"
+below) but none reaches the upstream provider.
 
 ---
 
@@ -105,14 +112,20 @@ Verify:
 - `curl /api/chat` succeeds (returns SSE stream)
 - No `LLM call rejected` log lines for new requests
 
-## What this does NOT do (yet)
+## Per-surface behavior when engaged
+
+| Surface | Call sites | Engagement effect |
+|---|---|---|
+| Copilot chat | `copilot.chat` | HTTP 503 returned to caller; user sees "LLM Kill Switch Engaged" |
+| Embedder | `embedder.batch` | Batch throws → caller degrades to BM25-only (null embeddings + warn log). Ingest continues; search keeps working without vector recall until disengaged. |
+| PR review | `pr_review.analyse` | LLM call throws → falls through to `localFallbackAnalysis` (deterministic findings only). PR still gets a review, summary line says "LLM_KILL_SWITCH engaged — degraded to deterministic findings only." |
+| Agent refactor (risk validation) | `agent_refactor.validate_risks` | Throws → caught and returns the unfiltered risk list (no LLM filtering). Conservative — more risks surfaced, none dropped. |
+| Agent refactor (file generation) | `agent_refactor.generate_content` | Throws — propagates up. Agent run fails visibly rather than push a half-baked refactor PR. |
+
+## What this does NOT do (still out of scope)
 
 | Concern | Status |
 |---|---|
-| Stops chat / copilot LLM calls | **Yes — covered** |
-| Stops embedder / ingest LLM calls | **No — separate wiring PR.** Embedder still hits the provider. |
-| Stops PR-review LLM calls | **No — separate wiring PR.** |
-| Stops agent (refactor / scan) LLM calls | **No — separate wiring PR.** |
 | Hot-toggle without restart | **Partial.** Reads on every call, so any orchestrator that updates env without restart (rare) gets instant effect. Restart is the documented path. |
 | SystemSetting-backed toggle for in-app admin UI | **No — Phase 4B** alongside the audit log. |
 | Cancel in-flight requests | **No — out of scope.** Engage stops new requests; existing ones complete or fail naturally. |

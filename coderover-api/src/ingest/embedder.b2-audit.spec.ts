@@ -7,6 +7,8 @@ import { EmbedderService } from './embedder.service';
 import { EdgeProducerAudit } from '../entities/edge-producer-audit.entity';
 import { ConfidenceTaggerService } from '../graph/confidence-tagger.service';
 import { computeEdgeId, computeNodeId } from '../graph/deterministic-ids';
+import { LLMKillSwitchService } from '../llm-guard/llm-kill-switch.service';
+import { LLMAuditService } from '../llm-guard/llm-audit.service';
 
 jest.mock('openai', () => ({
   __esModule: true,
@@ -46,6 +48,8 @@ describe('EmbedderService (Phase 10 B2 audit wire-up)', () => {
         { provide: DataSource, useValue: dataSource },
         { provide: getRepositoryToken(EdgeProducerAudit), useValue: auditRepo },
         ConfidenceTaggerService,
+        { provide: LLMKillSwitchService, useValue: { assertNotKilled: jest.fn() } },
+        { provide: LLMAuditService, useValue: { record: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 

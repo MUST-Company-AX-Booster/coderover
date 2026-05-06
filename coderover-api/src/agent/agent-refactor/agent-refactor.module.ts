@@ -13,6 +13,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AdminConfigModule } from '../../admin/admin-config.module';
 import { GraphModule } from '../../graph/graph.module';
 import { ObservabilityModule } from '../../observability/observability.module';
+import { LLMGuardModule } from '../../llm-guard/llm-guard.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { ObservabilityModule } from '../../observability/observability.module';
     AdminConfigModule,
     GraphModule,
     ObservabilityModule,
+    LLMGuardModule,
   ],
   controllers: [AgentRefactorController],
   providers: [AgentRefactorService],

@@ -22,6 +22,9 @@ import {
   resolveLlmBaseUrl,
   resolveLlmProvider,
 } from '../../config/openai.config';
+import { LLMKillSwitchService } from '../../llm-guard/llm-kill-switch.service';
+import { LLMResponseValidatorService } from '../../llm-guard/llm-response-validator.service';
+import { LLMAuditService } from '../../llm-guard/llm-audit.service';
 
 export interface RefactorSuggestion {
   smellId: string;
@@ -53,6 +56,9 @@ export class AgentRefactorService {
     private adminConfigService: AdminConfigService,
     private memgraphService: MemgraphService,
     private tokenCap: TokenCapService,
+    private llmKillSwitch: LLMKillSwitchService,
+    private llmValidator: LLMResponseValidatorService,
+    private llmAudit: LLMAuditService,
   ) {}
 
   async requestFix(repoId: string, suggestionId: string): Promise<any> {
@@ -420,7 +426,18 @@ export class AgentRefactorService {
       baseURL: resolveLlmBaseUrl(provider, llmConfig.baseUrl || undefined, apiKey, 'chat'),
     });
 
+    // Phase 4 (Zero Trust): kill switch BEFORE building the prompt or
+    // hitting the provider. The catch a few lines below already swallows
+    // throws and returns the unfiltered `risks` array as a graceful
+    // fallback, so kill-switch engagement degrades to "no LLM
+    // validation" without breaking the agent run.
+    const startedAt = Date.now();
+    const model = llmConfig.chatModel || 'gpt-4o-mini';
+    const auditOrgId = currentOrgId() ?? null;
+
     try {
+      this.llmKillSwitch.assertNotKilled();
+
       // Create a summary of risks for the LLM
       const riskSummary = risks.map((r, i) => ({
         index: i,
@@ -433,16 +450,16 @@ export class AgentRefactorService {
         You are an expert code reviewer analyzing potential code smells detected by a static scanner.
         Review the following list of flagged files and issues.
         Determine if each issue is a GENUINE architectural/code smell that needs refactoring, or a FALSE POSITIVE.
-        
+
         Common False Positives:
         - index.ts / export barrels having "High Fan-Out"
         - *.spec.ts / *.test.ts having "Long Functions" or "Large Files"
         - Configuration files or auto-generated files
         - Intentional circular dependencies in type definitions
-        
+
         Risks to evaluate:
         ${JSON.stringify(riskSummary, null, 2)}
-        
+
         Return ONLY a JSON array of the indices of the GENUINE risks.
         Example output: [0, 2, 5]
       `;
@@ -451,7 +468,7 @@ export class AgentRefactorService {
         ? await createLocalChatCompletion({
             apiKey,
             baseUrl: llmConfig.baseUrl || undefined,
-            model: llmConfig.chatModel || 'gpt-4o-mini',
+            model,
             messages: [{ role: 'user', content: prompt }],
             temperature: 0.1,
           })
@@ -459,12 +476,29 @@ export class AgentRefactorService {
             const orgId = currentOrgId();
             if (orgId) await this.tokenCap.guard(orgId);
             return openai.chat.completions.create({
-              model: llmConfig.chatModel || 'gpt-4o-mini',
+              model,
               messages: [{ role: 'user', content: prompt }],
               temperature: 0.1,
               response_format: { type: 'json_object' },
             });
           })();
+
+      const rawContent = response.choices[0]?.message?.content ?? '';
+      const validation = this.llmValidator.validate(rawContent);
+
+      void this.llmAudit.record({
+        orgId: auditOrgId,
+        callSite: 'agent_refactor.validate_risks',
+        provider,
+        model,
+        promptText: prompt,
+        responseText: rawContent,
+        promptTokens: response.usage?.prompt_tokens ?? null,
+        completionTokens: response.usage?.completion_tokens ?? null,
+        totalTokens: response.usage?.total_tokens ?? null,
+        latencyMs: Date.now() - startedAt,
+        redactions: validation.redactions,
+      });
 
       // Phase 9: record usage against org cap.
       const orgIdForUsage = currentOrgId();
@@ -478,7 +512,11 @@ export class AgentRefactorService {
         } catch { /* best-effort */ }
       }
 
-      const content = response.choices[0]?.message?.content;
+      // Use the validator-sanitized content for parsing — credential
+      // patterns from the model become [REDACTED:TYPE] before JSON.parse
+      // sees them. The redaction tokens contain no JSON-special chars
+      // so structure is preserved.
+      const content = validation.sanitized;
       if (!content) return risks;
 
       const resultObj = JSON.parse(content);
@@ -491,6 +529,20 @@ export class AgentRefactorService {
       
     } catch (error: any) {
       this.logger.error(`Failed to validate risks with LLM: ${error.message}`);
+      // Audit failures (including kill-switch engagement) without
+      // hashing a prompt we may not have built yet — promptText
+      // empty means "guard rejected before we composed the call".
+      void this.llmAudit.record({
+        orgId: auditOrgId,
+        callSite: 'agent_refactor.validate_risks',
+        provider,
+        model,
+        promptText: '',
+        responseText: null,
+        latencyMs: Date.now() - startedAt,
+        killSwitchBlocked: error?.constructor?.name === 'LLMKillSwitchError',
+        error: error?.message ?? String(error),
+      });
       return risks; // Fallback to returning all risks if LLM fails
     }
   }
@@ -622,25 +674,83 @@ export class AgentRefactorService {
       },
     ];
 
-    const resp = provider === 'local'
-      ? await createLocalChatCompletion({
-          apiKey,
-          baseUrl: llmConfig.baseUrl || undefined,
-          model: llmConfig.chatModel || 'gpt-4o-mini',
-          temperature: 0.2,
-          messages: messages.map((message) => ({
-            role: message.role,
-            content: 'content' in message ? message.content : '',
-          })),
-        })
-      : await openai.chat.completions.create({
-          model: llmConfig.chatModel || 'gpt-4o-mini',
-          temperature: 0.2,
-          messages,
-        });
+    // Phase 4 (Zero Trust): kill switch BEFORE the upstream call. We
+    // intentionally do NOT catch and swallow the throw here — if the
+    // operator engages the switch mid-run, the agent run should fail
+    // visibly rather than push a half-baked refactor PR. The orchestrator
+    // surfaces the failure in the agent-run log.
+    this.llmKillSwitch.assertNotKilled();
+
+    const model = llmConfig.chatModel || 'gpt-4o-mini';
+    const promptText = messages
+      .map((m) => `[${m.role}] ${'content' in m ? m.content : ''}`)
+      .join('\n\n');
+    const startedAt = Date.now();
+    const auditOrgId = currentOrgId() ?? null;
+
+    // Union of both response shapes — local and OpenAI completions both
+    // expose `choices` and `usage` at the same paths, which is all this
+    // function reads.
+    type ChatResp = Awaited<
+      ReturnType<typeof createLocalChatCompletion>
+        | ReturnType<OpenAI['chat']['completions']['create']>
+    >;
+    let resp: ChatResp;
+    try {
+      resp = provider === 'local'
+        ? await createLocalChatCompletion({
+            apiKey,
+            baseUrl: llmConfig.baseUrl || undefined,
+            model,
+            temperature: 0.2,
+            messages: messages.map((message) => ({
+              role: message.role,
+              content: 'content' in message ? message.content : '',
+            })),
+          })
+        : await openai.chat.completions.create({
+            model,
+            temperature: 0.2,
+            messages,
+          });
+    } catch (err) {
+      void this.llmAudit.record({
+        orgId: auditOrgId,
+        callSite: 'agent_refactor.generate_content',
+        provider,
+        model,
+        promptText,
+        responseText: null,
+        latencyMs: Date.now() - startedAt,
+        error: (err as Error).message,
+      });
+      throw err;
+    }
 
     const raw = resp.choices?.[0]?.message?.content ?? '';
-    const content = this.sanitizeModelOutput(raw);
+
+    // Phase 4: scrub credential-shaped patterns BEFORE the content goes
+    // into a PR commit. If the model hallucinates an AWS key or GitHub
+    // PAT pattern in refactored code, the validator turns it into
+    // [REDACTED:TYPE] so the secret never lands in source control. The
+    // redaction count flows into the audit row for ops alerting.
+    const validation = this.llmValidator.validate(raw);
+
+    void this.llmAudit.record({
+      orgId: auditOrgId,
+      callSite: 'agent_refactor.generate_content',
+      provider,
+      model,
+      promptText,
+      responseText: raw,
+      promptTokens: resp.usage?.prompt_tokens ?? null,
+      completionTokens: resp.usage?.completion_tokens ?? null,
+      totalTokens: resp.usage?.total_tokens ?? null,
+      latencyMs: Date.now() - startedAt,
+      redactions: validation.redactions,
+    });
+
+    const content = this.sanitizeModelOutput(validation.sanitized);
     if (!content) {
       throw new Error('LLM returned empty content');
     }

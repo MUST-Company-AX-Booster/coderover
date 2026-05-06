@@ -20,7 +20,16 @@ describe('ArtifactsService', () => {
       delete: jest.fn().mockResolvedValue({ affected: 1 }),
     };
     mockRepoRepo = {
-      find: jest.fn().mockResolvedValue([{ id: 'default-repo-id', fullName: 'demo/codebase' }]),
+      // The default-repo-id row supports the existing getArtifacts tests
+      // that resolve "use the first active repo when no repoId given".
+      // Phase 9 (2026-04-16) made `context_artifacts.org_id` NOT NULL
+      // and ArtifactsService now derives org_id from the Repo row
+      // before INSERT. Tests that exercise upsertArtifacts with
+      // specific repoIds override this mock per-test to return rows
+      // matching their fixtures.
+      find: jest.fn().mockResolvedValue([
+        { id: 'default-repo-id', fullName: 'demo/codebase', orgId: 'test-org' },
+      ]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -99,6 +108,10 @@ describe('ArtifactsService', () => {
 
   describe('upsertArtifacts', () => {
     it('upserts a single artifact successfully', async () => {
+      // Phase 9: upsertArtifacts looks up the Repo row to derive org_id
+      // before insert. Override the per-test mock to return a repo
+      // matching this artifact's repoId.
+      mockRepoRepo.find.mockResolvedValueOnce([{ id: 'repo-1', orgId: 'test-org' }]);
       mockQuery.mockResolvedValue([]);
       const result = await service.upsertArtifacts([
         {
@@ -114,6 +127,7 @@ describe('ArtifactsService', () => {
     });
 
     it('upserts multiple artifacts', async () => {
+      mockRepoRepo.find.mockResolvedValueOnce([{ id: 'r1', orgId: 'test-org' }]);
       mockQuery.mockResolvedValue([]);
       const result = await service.upsertArtifacts([
         { repoId: 'r1', artifactType: 'schema', filePath: 'a.sql', content: 'SELECT 1' },
@@ -146,12 +160,21 @@ describe('ArtifactsService', () => {
       expect(result.upserted).toBe(0);
     });
 
-    it('handles artifact without repoId', async () => {
+    it('rejects artifact without a resolvable repoId (Phase 9 NOT NULL guard)', async () => {
+      // Pre-Phase-9, this test passed because the INSERT didn't include
+      // org_id and the column was nullable. After migration 014 made
+      // org_id NOT NULL, ArtifactsService fails fast with a clear
+      // message instead of letting Postgres raise. Asserting the
+      // error path is the correct contract — quietly succeeding on
+      // an org-less artifact would re-open the cross-tenant bleed
+      // the Phase 9 fix closed.
       mockQuery.mockResolvedValue([]);
       const result = await service.upsertArtifacts([
         { artifactType: 'schema', filePath: 'schema.sql', content: 'SELECT 1' },
       ]);
-      expect(result.upserted).toBe(1);
+      expect(result.upserted).toBe(0);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatch(/cannot resolve org_id/);
     });
   });
 

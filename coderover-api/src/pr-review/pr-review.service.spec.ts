@@ -17,6 +17,7 @@ import { LLMResponseValidatorService } from '../llm-guard/llm-response-validator
 import { LLMAuditService } from '../llm-guard/llm-audit.service';
 import { EventsService } from '../events/events.service';
 import { GitHubAppService } from '../github-integration/github-app.service';
+import { withTestOrg } from '../organizations/test-helpers';
 import { GitHubTokenResolver } from '../github-integration/github-token-resolver.service';
 
 const llmGuardStubProviders = [
@@ -250,12 +251,20 @@ describe('PrReviewService', () => {
   });
 
   describe('listReviews', () => {
-    it('should return recent reviews', async () => {
+    it('should return recent reviews for the current org', async () => {
+      // listReviews fails closed when currentOrgId() returns null —
+      // wrap in withTestOrg so the AsyncLocalStorage scope is set.
       prReviewRepo.find.mockResolvedValue([
         { id: '1', repo: 'org/repo', prNumber: 1, status: 'completed' },
       ]);
-      const result = await service.listReviews(10);
+      const result = await withTestOrg(() => service.listReviews(10));
       expect(Array.isArray(result)).toBe(true);
+      // The query is scoped to the active org — assert it explicitly
+      // so a regression that drops the orgId filter is caught here
+      // rather than in production.
+      expect(prReviewRepo.find).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { orgId: 'test-org' } }),
+      );
     });
   });
 });

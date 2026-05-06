@@ -66,7 +66,12 @@ describe('HealthService', () => {
     expect(result.components.queue.depth).toBe(4);
     expect(result.components.watcher.sessions).toBe(1);
     expect(result.metrics.embeddingCoverage.coveragePercent).toBe(80);
-    expect(result.components.llm.status).toBe('down');
+    // LLM auto-disables in this fixture: the mock ConfigService returns
+    // nothing for OPENAI_API_KEY / OPENAI_BASE_URL and LLM_PROVIDER
+    // defaults to 'local', which trips the auto-disable path documented
+    // in .env.example. The test predates the auto-disable logic and
+    // was never updated to match.
+    expect(result.components.llm.status).toBe('disabled');
   });
 
   it('returns degraded when database check fails', async () => {

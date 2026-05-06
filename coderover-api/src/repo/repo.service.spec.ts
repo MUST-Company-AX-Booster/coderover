@@ -7,6 +7,7 @@ import { GitHubService } from '../ingest/github.service';
 import { SyncLog } from '../entities/sync-log.entity';
 import { CodeChunk } from '../entities/code-chunk.entity';
 import { MemgraphService } from '../graph/memgraph.service';
+import { withTestOrg } from '../organizations/test-helpers';
 
 describe('RepoService', () => {
   let service: RepoService;
@@ -163,12 +164,20 @@ describe('RepoService', () => {
   });
 
   describe('findAll', () => {
-    it('should return active repos', async () => {
+    it('should return active repos for the current org', async () => {
+      // RepoService.findAll() reads currentOrgId() and throws
+      // ForbiddenException when it's null. Tests run outside any
+      // request, so we synthesize the AsyncLocalStorage context via
+      // withTestOrg. The query now includes orgId in the where clause
+      // (security fix — cross-org repo enumeration was possible
+      // without it).
       repoRepository.find.mockResolvedValue([mockRepo]);
 
-      const result = await service.findAll();
+      const result = await withTestOrg(() => service.findAll());
       expect(result).toEqual([mockRepo]);
-      expect(repoRepository.find).toHaveBeenCalledWith({ where: { isActive: true } });
+      expect(repoRepository.find).toHaveBeenCalledWith({
+        where: { isActive: true, orgId: 'test-org' },
+      });
     });
   });
 

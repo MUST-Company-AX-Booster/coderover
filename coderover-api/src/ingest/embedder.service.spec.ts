@@ -157,7 +157,13 @@ describe('EmbedderService', () => {
       expect(result.chunksUpserted).toBe(5);
     });
 
-    it('should report errors for failed batches', async () => {
+    it('should report errors for failed batches and fall back to BM25-only upsert', async () => {
+      // 2026-04-16: when the embedding API is unavailable for a batch,
+      // we no longer drop the chunks — we upsert them with embedding=null
+      // so BM25 full-text search keeps working until a backfill worker
+      // re-embeds them. The test now reflects that contract: errors are
+      // still reported, AND the chunks land in code_chunks with null
+      // embeddings.
       const chunks = [createChunk(0)];
 
       mockOpenAICreate
@@ -168,7 +174,8 @@ describe('EmbedderService', () => {
       const result = await service.embedAndUpsert(chunks);
 
       expect(result.errors.length).toBeGreaterThan(0);
-      expect(result.chunksUpserted).toBe(0);
+      // BM25-fallback path: chunk gets upserted with null embedding.
+      expect(result.chunksUpserted).toBe(1);
     });
 
     it('should upsert chunks with null embedding for local provider on dimension mismatch', async () => {

@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 540" role="img" aria-label="MCP install — one npx command into Claude Code, Cursor, Aider, Codex, Gemini CLI">
+  <defs>
+    <pattern id="scan" width="4" height="4" patternUnits="userSpaceOnUse">
+      <rect width="4" height="4" fill="#0A0A0A"/>
+      <rect width="4" height="2" fill="rgba(0,0,0,0.35)"/>
+    </pattern>
+    <style><![CDATA[
+      .mono { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .sans { font-family: Inter, -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+      .bone { fill: #EDEBE5; }
+      .ink { fill: #D8D6CF; }
+      .silver { fill: #8C8C87; }
+      .green { fill: #9FE0B4; }
+      .coral { fill: #E89D9D; }
+      .eyebrow { letter-spacing: 0.18em; text-transform: uppercase; }
+    ]]></style>
+  </defs>
+
+  <rect width="1200" height="540" fill="#0A0A0A"/>
+  <rect width="1200" height="540" fill="url(#scan)" opacity="0.55"/>
+
+  <!-- top bar -->
+  <line x1="0" y1="56" x2="1200" y2="56" stroke="rgba(237,235,229,0.10)"/>
+  <text x="32" y="36" class="mono silver eyebrow" font-size="11">§ MCP INSTALL — npx @coderover/mcp install &lt;agent&gt;</text>
+  <text x="1168" y="36" text-anchor="end" class="mono silver eyebrow" font-size="11">CLAUDE-CODE · CURSOR · AIDER · CODEX · GEMINI-CLI</text>
+
+  <!-- terminal window -->
+  <g transform="translate(80,96)">
+    <!-- frame -->
+    <rect x="0" y="0" width="1040" height="386" fill="#050505" stroke="rgba(237,235,229,0.22)"/>
+
+    <!-- title bar -->
+    <rect x="0" y="0" width="1040" height="32" fill="#1A1A1A"/>
+    <line x1="0" y1="32" x2="1040" y2="32" stroke="rgba(237,235,229,0.10)"/>
+    <!-- traffic lights (brutalist mono — squares not circles) -->
+    <rect x="14" y="11" width="10" height="10" fill="#E89D9D"/>
+    <rect x="30" y="11" width="10" height="10" fill="#8C8C87"/>
+    <rect x="46" y="11" width="10" height="10" fill="#9FE0B4"/>
+    <text x="520" y="22" text-anchor="middle" class="mono silver" font-size="11">~/my-app — rover</text>
+
+    <!-- body -->
+    <g class="mono" font-size="13" transform="translate(20,60)">
+      <!-- prompt 1 -->
+      <text class="silver">$</text>
+      <text x="14" class="bone">npx @coderover/mcp install claude-code</text>
+
+      <g transform="translate(0,28)" class="ink">
+        <text>↳ writing config to ~/.claude/claude_desktop_config.json</text>
+        <text x="0" y="22">↳ minted scoped MCP token (org=acme, scope=read+chat)</text>
+        <text x="0" y="44" class="green">↳ installed · 7 tools registered · restart Claude Code to land</text>
+      </g>
+
+      <!-- prompt 2 -->
+      <text x="0" y="132" class="silver">$</text>
+      <text x="14" y="132" class="bone">npx @coderover/mcp install cursor --offline</text>
+      <g transform="translate(0,160)" class="ink">
+        <text>↳ resolving repo at ~/my-app · 2,841 files · git@v0.12.1</text>
+        <text x="0" y="22">↳ embeddings: offline (MiniLM, 384d) · graph: tree-sitter · store: sqlite</text>
+        <text x="0" y="44" class="green">↳ installed · zero-network mode · sandbox armed</text>
+      </g>
+
+      <!-- prompt 3 -->
+      <text x="0" y="244" class="silver">$</text>
+      <text x="14" y="244" class="bone">rover doctor</text>
+      <g transform="translate(0,272)" class="mono" font-size="12">
+        <text class="green">  ✓ node 18.17.1</text>
+        <text x="180" y="0" class="green">✓ git 2.43.0</text>
+        <text x="320" y="0" class="green">✓ memgraph reachable</text>
+        <text x="540" y="0" class="green">✓ pgvector ok</text>
+        <text x="700" y="0" class="green">✓ token scopes</text>
+        <text x="860" y="0" class="green">✓ watch daemon</text>
+        <text x="0" y="24" class="green">  ✓ 16 grammars</text>
+        <text x="180" y="24" class="green">✓ embedder</text>
+        <text x="320" y="24" class="silver">8 / 8 checks landed</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- footer -->
+  <text x="32" y="516" class="mono silver eyebrow" font-size="11">§ ALSO INSTALLS: aider · codex · gemini-cli — one npx command, atomic config write, never clobbers</text>
+</svg>

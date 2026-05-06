@@ -22,9 +22,14 @@ import { OrgContext, runWithOrg } from './org-context';
  * it wraps" is the cheapest convention.
  */
 export function withTestOrg<T>(
-  fn: () => T | Promise<T>,
+  fn: () => T,
   ctx: Partial<OrgContext> = {},
-): T | Promise<T> {
+): T {
+  // `runWithOrg` is generic and propagates whatever `fn` returns —
+  // sync values, Promises, void, anything. Letting `T` be inferred
+  // from `fn`'s return type means a sync body returns a sync value
+  // and an async body returns a Promise; no caller has to narrow a
+  // `T | Promise<T>` union (which the previous shape forced).
   return runWithOrg(
     {
       orgId: ctx.orgId ?? 'test-org',

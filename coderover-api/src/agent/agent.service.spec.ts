@@ -37,13 +37,15 @@ describe('AgentService', () => {
         },
         // MetricsService was added to AgentService's constructor without
         // a corresponding spec update — DI failed at index [2] before
-        // any test body ran.
+        // any test body ran. The real service exposes generic prom-style
+        // methods (`inc`, `observe`, `set`), not domain-specific ones —
+        // AgentService calls `inc('agent_run_total', {...})` etc.
         {
           provide: MetricsService,
           useValue: {
-            recordAgentRun: jest.fn(),
-            recordAgentRunDuration: jest.fn(),
-            recordAgentRunFailure: jest.fn(),
+            inc: jest.fn(),
+            observe: jest.fn(),
+            set: jest.fn(),
           },
         },
       ],

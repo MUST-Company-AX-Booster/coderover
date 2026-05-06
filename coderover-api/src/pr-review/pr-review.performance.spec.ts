@@ -122,13 +122,15 @@ describe('PrReviewService Performance', () => {
             find: jest.fn().mockResolvedValue([]),
           },
         },
-        { provide: EventsService, useValue: { emit: jest.fn() } },
+        // Match the real interfaces — EventsService.publish/publishMany,
+        // GitHubAppService.createCheckRun/completeCheckRun.
+        { provide: EventsService, useValue: { publish: jest.fn(), publishMany: jest.fn() } },
         {
           provide: GitHubAppService,
           useValue: {
             isConfigured: jest.fn().mockReturnValue(false),
             createCheckRun: jest.fn(),
-            updateCheckRun: jest.fn(),
+            completeCheckRun: jest.fn(),
           },
         },
         {

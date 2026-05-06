@@ -139,14 +139,18 @@ describe('PrReviewService', () => {
         // EventsService + GitHubApp/TokenResolver were added to
         // PrReviewService's constructor without a corresponding spec
         // update. Stub each so DI resolves and tests reach assertion
-        // bodies.
-        { provide: EventsService, useValue: { emit: jest.fn() } },
+        // bodies. Method names match the actual service surface
+        // (EventsService.publish/publishMany, GitHubAppService
+        // .createCheckRun/.completeCheckRun) — calling a non-existent
+        // method on a jest.fn() Map would TypeError at runtime, so
+        // matching the real interface matters even for stubs.
+        { provide: EventsService, useValue: { publish: jest.fn(), publishMany: jest.fn() } },
         {
           provide: GitHubAppService,
           useValue: {
             isConfigured: jest.fn().mockReturnValue(false),
             createCheckRun: jest.fn(),
-            updateCheckRun: jest.fn(),
+            completeCheckRun: jest.fn(),
           },
         },
         {

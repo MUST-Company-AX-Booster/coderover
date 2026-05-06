@@ -24,8 +24,11 @@ describe('AgentOrchestratorService', () => {
         AgentOrchestratorService,
         { provide: AgentApprovalService, useValue: mockApprovalService },
         { provide: AgentRefactorService, useValue: mockRefactorService },
-        // EventsService dependency added without spec update.
-        { provide: EventsService, useValue: { emit: jest.fn() } },
+        // EventsService dependency added without spec update. The
+        // real service exposes `publish(room, event, payload)` and
+        // `publishMany(rooms, event, payload)` — NOT `emit`. Stubbing
+        // the wrong name would crash any test that triggered an event.
+        { provide: EventsService, useValue: { publish: jest.fn(), publishMany: jest.fn() } },
       ],
     }).compile();
 

@@ -22,7 +22,10 @@ import {
   resolveLlmBaseUrl,
   resolveLlmProvider,
 } from '../../config/openai.config';
-import { LLMKillSwitchService } from '../../llm-guard/llm-kill-switch.service';
+import {
+  LLMKillSwitchService,
+  LLMKillSwitchError,
+} from '../../llm-guard/llm-kill-switch.service';
 import { LLMResponseValidatorService } from '../../llm-guard/llm-response-validator.service';
 import { LLMAuditService } from '../../llm-guard/llm-audit.service';
 
@@ -540,7 +543,7 @@ export class AgentRefactorService {
         promptText: '',
         responseText: null,
         latencyMs: Date.now() - startedAt,
-        killSwitchBlocked: error?.constructor?.name === 'LLMKillSwitchError',
+        killSwitchBlocked: error instanceof LLMKillSwitchError,
         error: error?.message ?? String(error),
       });
       return risks; // Fallback to returning all risks if LLM fails
@@ -722,6 +725,7 @@ export class AgentRefactorService {
         promptText,
         responseText: null,
         latencyMs: Date.now() - startedAt,
+        killSwitchBlocked: err instanceof LLMKillSwitchError,
         error: (err as Error).message,
       });
       throw err;

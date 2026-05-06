@@ -6,12 +6,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const repoRoot = resolve(fileURLToPath(import.meta.url), '../..');
 const playwrightEntry = join(repoRoot, 'coderover-frontend/node_modules/playwright/index.mjs');
 const { chromium } = await import(pathToFileURL(playwrightEntry).href);
+const { launchChromium } = await import(pathToFileURL(join(repoRoot, 'scripts/_playwright-launch.mjs')).href);
 const assetsDir = join(repoRoot, 'assets');
 const landing = join(repoRoot, 'coderover-frontend/public/landing/index.html');
 
-const browser = await chromium.launch({
-  executablePath: process.env.HOME + '/Library/Caches/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-mac-arm64/chrome-headless-shell'
-});
+const browser = await launchChromium(chromium);
 const ctx = await browser.newContext({ deviceScaleFactor: 2 });
 const page = await ctx.newPage();
 
@@ -27,7 +26,7 @@ async function svgToPng(svgPath) {
     </style></head><body>${svg}</body></html>`,
     { waitUntil: 'load' }
   );
-  await page.waitForTimeout(120); // let fonts settle
+  await page.evaluate(() => document.fonts.ready);
   const out = svgPath.replace(/\.svg$/, '.png');
   await page.locator('svg').screenshot({ path: out, omitBackground: false });
   return out;
@@ -43,7 +42,15 @@ for (const svg of svgs) {
 console.log('§ capturing live landing page');
 await page.setViewportSize({ width: 1440, height: 900 });
 await page.goto('file://' + landing, { waitUntil: 'networkidle' });
-await page.waitForTimeout(800); // let the brand-film video paint a frame
+await page.evaluate(() => document.fonts.ready);
+// If the landing ships a brand-film video, wait until the first frame is
+// decoded so the screenshot doesn't catch a black <video>. No-op if no video.
+await page.evaluate(() => {
+  const v = document.querySelector('video');
+  if (!v) return;
+  if (v.readyState >= 2) return; // HAVE_CURRENT_DATA — first frame ready
+  return new Promise(r => v.addEventListener('loadeddata', r, { once: true }));
+});
 await page.screenshot({ path: join(assetsDir, 'landing-hero.png'), clip: { x: 0, y: 0, width: 1440, height: 900 } });
 console.log('  → landing-hero.png');
 

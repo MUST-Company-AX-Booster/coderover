@@ -173,11 +173,21 @@ export class LLMAnomalyAlertsService implements OnModuleInit, OnModuleDestroy {
     // sweep. Sink fires fire-and-forget per surviving alert. Both are
     // env-toggleable; defaults preserve pre-Phase-4D log-only behavior
     // when unset.
-    const fireable = alerts.filter((a) => this.passCooldown(a));
+    //
+    // Per-sweep config is read ONCE here, not per alert in the filter
+    // / forEach. ConfigService.get is cheap, but env reads inside an
+    // inner loop are still wasteful and gemini-code-assist on PR #68
+    // flagged the pattern. Cleaner is also easier to follow.
+    const cooldownMinutes = this.getNumber(
+      'ANOMALY_COOLDOWN_MINUTES',
+      DEFAULTS.cooldownMinutes,
+    );
+    const webhookCfg = this.resolveWebhookConfig();
+    const fireable = alerts.filter((a) => this.passCooldown(a, cooldownMinutes));
 
     for (const alert of fireable) {
       this.logger.warn(JSON.stringify(alert));
-      void this.sendWebhook(alert);
+      if (webhookCfg) void this.sendWebhook(alert, webhookCfg);
     }
 
     return fireable;
@@ -187,14 +197,10 @@ export class LLMAnomalyAlertsService implements OnModuleInit, OnModuleDestroy {
    * Cooldown gate. Returns `true` if this alert should fire (and
    * stamps the timestamp); `false` if we're still inside the cooldown
    * window for this (signal, scope) and the alert should be
-   * suppressed. ANOMALY_COOLDOWN_MINUTES=0 disables cooldown — every
+   * suppressed. `cooldownMinutes <= 0` disables cooldown — every
    * sweep re-fires.
    */
-  private passCooldown(alert: AnomalySignal): boolean {
-    const cooldownMinutes = this.getNumber(
-      'ANOMALY_COOLDOWN_MINUTES',
-      DEFAULTS.cooldownMinutes,
-    );
+  private passCooldown(alert: AnomalySignal, cooldownMinutes: number): boolean {
     if (cooldownMinutes <= 0) return true;
 
     // JSON.stringify with sorted keys would be more robust to scope
@@ -214,19 +220,18 @@ export class LLMAnomalyAlertsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Fire-and-forget webhook POST. ANOMALY_WEBHOOK_URL unset → no-op
-   * (logs-only mode, matches pre-Phase-4D). When set, posts the alert
-   * payload as JSON. Optional `ANOMALY_WEBHOOK_AUTH_HEADER` is sent as
-   * the `Authorization` header (operators put `Bearer xxx` or
-   * `Basic xxx` there themselves — we don't construct it).
-   *
-   * Errors are warn-logged and swallowed: a sweep that detected real
-   * anomalies must still emit its log line (we already did, before
-   * calling this) even if the sink is down.
+   * Resolve webhook config from env once per sweep. Returns null when
+   * ANOMALY_WEBHOOK_URL is unset, which signals log-only mode and
+   * lets the caller skip `sendWebhook` entirely instead of constructing
+   * AbortControllers and headers per alert.
    */
-  private async sendWebhook(alert: AnomalySignal): Promise<void> {
+  private resolveWebhookConfig(): {
+    url: string;
+    headers: Record<string, string>;
+    timeoutMs: number;
+  } | null {
     const url = this.configService.get<string>('ANOMALY_WEBHOOK_URL');
-    if (!url) return;
+    if (!url) return null;
 
     const authHeader = this.configService.get<string>('ANOMALY_WEBHOOK_AUTH_HEADER');
     const timeoutMs = this.getNumber(
@@ -237,12 +242,28 @@ export class LLMAnomalyAlertsService implements OnModuleInit, OnModuleDestroy {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (authHeader) headers['Authorization'] = authHeader;
 
+    return { url, headers, timeoutMs };
+  }
+
+  /**
+   * Fire-and-forget webhook POST. The caller (`runSweep`) prepares
+   * `cfg` once and only calls this when a sink URL is configured —
+   * matches the audit/sink pattern and avoids re-reading env per alert.
+   *
+   * Errors are warn-logged and swallowed: a sweep that detected real
+   * anomalies must still emit its log line (we already did, before
+   * calling this) even if the sink is down.
+   */
+  private async sendWebhook(
+    alert: AnomalySignal,
+    cfg: { url: string; headers: Record<string, string>; timeoutMs: number },
+  ): Promise<void> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const timeout = setTimeout(() => controller.abort(), cfg.timeoutMs);
     try {
-      const res = await fetch(url, {
+      const res = await fetch(cfg.url, {
         method: 'POST',
-        headers,
+        headers: cfg.headers,
         body: JSON.stringify(alert),
         signal: controller.signal,
       });
@@ -252,8 +273,12 @@ export class LLMAnomalyAlertsService implements OnModuleInit, OnModuleDestroy {
         );
       }
     } catch (err) {
+      // Don't trust `err` to be an Error — `throw "string"` and
+      // `throw { code: 'X' }` both reach this catch and `.message`
+      // would silently render as `undefined` in the log.
+      const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(
-        `Anomaly webhook POST failed for ${alert.signal}: ${(err as Error).message}`,
+        `Anomaly webhook POST failed for ${alert.signal}: ${message}`,
       );
     } finally {
       clearTimeout(timeout);

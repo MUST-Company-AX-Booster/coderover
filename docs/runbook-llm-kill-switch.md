@@ -235,8 +235,58 @@ ANOMALY_KILL_SWITCH_BLOCKS=50           # global blocks/window
 Set any threshold to `0` to disable that signal. Set
 `ANOMALY_CHECK_INTERVAL_MS=0` to disable the sweep entirely.
 
-The current implementation **emits warn logs only** — there is no
-de-duplication and no native webhook sink. The same alert will re-fire
-every sweep while the breach persists, which is what you usually want
-during an incident. Phase 4D follow-ups: webhook sink + cooldown state
-machine.
+---
+
+## Anomaly sink + cooldown (Phase 4D)
+
+The Phase 4C alerts always emit a warn log. Phase 4D adds two opt-in
+behaviors on top: a webhook sink and per-(signal, scope) cooldown.
+
+### Webhook sink
+
+```bash
+ANOMALY_WEBHOOK_URL=https://hooks.slack.com/services/T0/B0/xxxxx
+ANOMALY_WEBHOOK_AUTH_HEADER=                    # optional
+ANOMALY_WEBHOOK_TIMEOUT_MS=5000                 # default
+```
+
+When `ANOMALY_WEBHOOK_URL` is set, every fired alert is POSTed as JSON
+to that URL. The body is the same payload that goes to the warn-log
+(see "Anomaly alerts" above for the shape). Slack Incoming Webhooks,
+PagerDuty Events v2, Discord webhooks, or a self-hosted relay all
+work — pick whatever your alerting stack speaks. If the receiving
+service expects a different shape (Slack wants `{text:...}`, PagerDuty
+wants `routing_key + payload + event_action`), put a small bridge
+between us and them; we don't second-guess the sink format.
+
+`ANOMALY_WEBHOOK_AUTH_HEADER` is sent verbatim as the `Authorization`
+header. Operators construct it themselves: `Bearer <token>`,
+`Basic <base64>`, etc.
+
+The POST is **fire-and-forget**. A 4xx/5xx, a timeout, or a connection
+failure is warn-logged and the sweep continues. The warn-log alert
+itself is always emitted regardless of sink state — log is the source
+of truth, sink is the courier.
+
+### Cooldown
+
+```bash
+ANOMALY_COOLDOWN_MINUTES=30                     # default
+```
+
+Without cooldown, a sustained breach (say, an org running over its
+token budget for an hour) re-fires the same alert every sweep — 12
+identical pages per hour at the default 5-minute sweep cadence. The
+cooldown state machine suppresses repeats for the same `(signal,
+scope)` tuple within the configured window. Different scopes
+(different orgs, different call_sites) are independent — you still
+get separate pages for each.
+
+Set `ANOMALY_COOLDOWN_MINUTES=0` to disable cooldown entirely (re-fire
+every sweep — useful for testing or if alerts route through a
+downstream dedup'er like Alertmanager that's already doing this).
+
+The cooldown state is **in-memory**. Lost on restart, which means a
+deploy will re-page any active breaches once. That's the right
+behavior — operators want confirmation after a deploy that incidents
+are still ongoing.

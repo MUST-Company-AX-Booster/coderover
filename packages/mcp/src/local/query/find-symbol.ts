@@ -47,6 +47,18 @@ interface SymbolRow {
 }
 
 /**
+ * Escape SQL LIKE metacharacters in a user-supplied value so the bound
+ * parameter is matched literally. SQLite does NOT auto-escape `%` / `_`
+ * inside bound LIKE values, so `find_symbol("%")` would otherwise match
+ * every row. We escape `\` first (so we don't double-escape on the next
+ * passes), then `%` and `_`, and pair this with `ESCAPE '\\'` in the
+ * SQL itself. See SQLite docs: https://www.sqlite.org/lang_expr.html#like
+ */
+function escapeLikePattern(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
+/**
  * Look up a symbol by its short name or qualified name. Returns up to
  * `limit` hits. Returns an empty array (not throws) when no symbol
  * matches — the MCP tool response should still be a well-formed
@@ -64,13 +76,16 @@ export function findSymbol(
   //   - qualified suffix  — `qualified LIKE '%.bar'` catches `Foo.bar`
   //                         when only the member name is given
   //
-  // Prefix uses `LIKE ? || '%'` rather than `LIKE '<val>%'` so the
-  // parameter can't inject a `%` wildcard — bound values are treated
-  // verbatim by SQLite.
+  // SQLite does not auto-escape `%`/`_` inside bound LIKE values, so we
+  // escape user input first and use `ESCAPE '\\'` to make the metachar
+  // handling explicit. Without this, `find_symbol("%")` returned every
+  // row in the index — the empty-string fix in 0.4.0 didn't cover the
+  // wildcard-string case.
   //
   // ORDER BY puts exact-name matches first; alphabetical on `qualified`
   // so the output is deterministic (ties in the DB's physical order
   // would leak through to the response otherwise).
+  const likeValue = escapeLikePattern(symbolName);
   const sql = `
     SELECT s.node_id    AS node_id,
            s.name       AS name,
@@ -82,15 +97,15 @@ export function findSymbol(
       FROM symbols s
       JOIN code_chunks c ON c.id = s.chunk_id
      WHERE s.name = ?
-        OR s.qualified LIKE ? || '%'
-        OR s.qualified LIKE '%.' || ?
+        OR s.qualified LIKE ? || '%' ESCAPE '\\'
+        OR s.qualified LIKE '%.' || ? ESCAPE '\\'
      ORDER BY (s.name = ?) DESC, s.qualified ASC
      LIMIT ?
   `;
 
   const rows = opts.db
     .prepare(sql)
-    .all(symbolName, symbolName, symbolName, symbolName, limit) as SymbolRow[];
+    .all(symbolName, likeValue, likeValue, symbolName, limit) as SymbolRow[];
 
   const results: FindSymbolResult[] = rows.map((r) => ({
     filePath: r.file_path,

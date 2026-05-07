@@ -95,12 +95,36 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
           io.err.write('--remote and --local are mutually exclusive.\n');
           return 1;
         }
+        const embedRaw = stringFlag(parsed.flags.embed);
+        if (embedRaw !== undefined && !isEmbedMode(embedRaw)) {
+          io.err.write(
+            `--embed requires mock|openai|offline, got ${embedRaw}\n`,
+          );
+          return 1;
+        }
+        const dbPathRaw = stringFlag(parsed.flags['db-path']);
+        // --embed and --db-path only apply to local mode. Pre-0.5.1 they
+        // were dropped silently in BOTH modes; 0.5.1 forwards them but
+        // remote-mode `runInstall` ignores them. Warn so the user
+        // doesn't think their flag did something.
+        if (!local && embedRaw !== undefined) {
+          io.err.write(
+            'warning: --embed has no effect in remote mode (use --local).\n',
+          );
+        }
+        if (!local && dbPathRaw !== undefined) {
+          io.err.write(
+            'warning: --db-path has no effect in remote mode (use --local).\n',
+          );
+        }
         const res = await runInstall(
           {
             agents: parsed.positional,
             mode: local ? 'local' : 'remote',
             apiUrl: stringFlag(parsed.flags['api-url']),
             token: stringFlag(parsed.flags.token),
+            embedMode: embedRaw,
+            dbPath: dbPathRaw,
             dryRun: Boolean(parsed.flags['dry-run']),
           },
           {
@@ -230,6 +254,10 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
 
 function stringFlag(v: string | boolean | undefined): string | undefined {
   return typeof v === 'string' ? v : undefined;
+}
+
+function isEmbedMode(v: string): v is 'openai' | 'mock' | 'offline' {
+  return v === 'openai' || v === 'mock' || v === 'offline';
 }
 
 function isKnownSub(s: string): boolean {

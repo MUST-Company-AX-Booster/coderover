@@ -72,6 +72,44 @@ describe('runReindexCmd — help and flags', () => {
     expect(code).toBe(2);
     expect(streams.errText()).toMatch(/unknown flag/);
   });
+
+  // Bug #2: reindex must validate the embedder BEFORE unlinking the DB,
+  // otherwise a misconfigured embed mode (e.g. --embed offline without the
+  // companion package) destroys the user's existing index and leaves them
+  // with nothing.
+  it('preserves existing DB when buildEmbedder throws', async () => {
+    const { root, cleanup: rmRoot } = seedRepo({
+      'src/a.ts': 'export function alpha(){ return 1 }\n',
+    });
+    const { dbPath, cleanup: rmDb } = mkTmpDbPath();
+    try {
+      const sentinel = 'sentinel-existing-db-content';
+      fs.writeFileSync(dbPath, sentinel, 'utf8');
+      const sizeBefore = fs.statSync(dbPath).size;
+
+      const streams = captureStreams();
+      const code = await runReindexCmd([root, '--embed', 'offline'], {
+        stdout: streams.out,
+        stderr: streams.err,
+        resolveDbPath: () => dbPath,
+        resolveProjectRoot: (x) => x ?? root,
+        buildEmbedder: () => {
+          throw new Error(
+            'CODEROVER_EMBED_MODE=offline requires @coderover/mcp-offline',
+          );
+        },
+        openIndexedDb,
+      });
+      expect(code).toBe(1);
+      expect(fs.existsSync(dbPath)).toBe(true);
+      expect(fs.statSync(dbPath).size).toBe(sizeBefore);
+      expect(fs.readFileSync(dbPath, 'utf8')).toBe(sentinel);
+      expect(streams.errText()).toMatch(/@coderover\/mcp-offline/);
+    } finally {
+      rmDb();
+      rmRoot();
+    }
+  });
 });
 
 const describeIfTs = treeSitterAvailable() ? describe : describe.skip;

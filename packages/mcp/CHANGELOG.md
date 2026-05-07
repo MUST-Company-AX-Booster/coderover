@@ -1,5 +1,101 @@
 # Changelog
 
+## 0.5.1 — 2026-05-07
+
+Five bugs in the published 0.5.0 release surfaced by an independent
+evaluation. All are correctness or DX defects that an agent can hit
+through the documented quickstart path.
+
+### Fixed
+
+- **`install --local` silently dropped `--embed` and `--db-path`.**
+  The CLI dispatcher in `cli/index.ts` declared both flags in
+  `INSTALL_FLAGS` and parsed them, but the `runInstall` call only
+  forwarded `apiUrl/token/dryRun`. The documented 60-second smoke
+  test (`install claude-code --local --embed mock`) silently wrote
+  `CODEROVER_EMBED_MODE=openai` to the agent config and then warned
+  the key was unset. Both flags now flow through; `--embed` is
+  validated against `mock|openai|offline` and bogus values exit `1`
+  with a clean error.
+- **`reindex` destroyed the DB before validating the embedder.**
+  `reindex --embed offline` (or any typo) without
+  `@coderover/mcp-offline` installed unlinked the existing
+  `<sha>.db` and only then tried to construct the embedder, which
+  threw — leaving the user with no index. The pre-flight now builds
+  the embedder first and bails before touching disk if it fails.
+  Paired with a synchronous `require.resolve('@xenova/transformers')`
+  probe in `buildEmbedder('offline')` so the missing-companion case
+  actually surfaces here (the `OfflineEmbedder` constructor itself
+  defers the require to first `.embed()` call).
+- **`find_symbol("%")` returned the entire index.** The `0.4.0`
+  empty-string fix closed `find_symbol("")` but did not cover
+  bound LIKE patterns containing `%` or `_`. SQLite does not
+  auto-escape metachars in bound values, so the wildcard fell
+  through and matched every row at confidence 1.0. The query now
+  escapes `\` / `%` / `_` in input and uses `ESCAPE '\\'` in the
+  SQL. Literal occurrences of these chars in symbol names still
+  match.
+- **The same physical repo at `/tmp/foo` and `/private/tmp/foo`
+  produced two indices.** `resolveDbPath` and `defaultDbPath` used
+  `path.resolve` instead of `realpath`, so any symlinked alternative
+  to a real directory (macOS `/tmp` ↔ `/private/tmp`, Linux bind
+  mounts, container source mounts) hashed to a different
+  `<sha>.db`. Both helpers now go through one shared
+  `canonicalizeForHash` that calls `fs.realpathSync.native` and
+  falls back to `path.resolve` only on `ENOENT` (the install / dry-run
+  case). `defaultDbPath` is now a thin wrapper over the shared
+  helper, eliminating the prior 12-vs-16-hex-chars drift class.
+- **`coderover index ./subdir` could silently index the parent.**
+  `resolveProjectRoot` walked upward looking for any project marker
+  (`package.json`, `.git`, …), even when the user passed an explicit
+  path. Quick-test directories or monorepos where a parent had a
+  marker would silently swap the root. Walk-up now applies only
+  when no path is passed (the "find the project I'm in" case).
+  Explicit paths are trusted as-is.
+
+### Hardened
+
+- **`canonicalizeForHash` discriminates errors by code.** Pre-fix
+  any realpath failure (EACCES on a mid-tree permission flip,
+  ELOOP on a symlink cycle, ENAMETOOLONG) silently fell back to
+  `path.resolve`, splitting the user's index across two `<sha>.db`
+  files. Only `ENOENT` falls back; other errors propagate so the
+  user sees the real failure.
+- **`buildEmbedder('offline')` discriminates `MODULE_NOT_FOUND`.**
+  Pre-fix any `require.resolve` failure showed the
+  `@coderover/mcp-offline` install hint, even when the real cause
+  was a corrupted `node_modules` (EACCES, malformed `package.json`,
+  `ERR_PACKAGE_PATH_NOT_EXPORTED`). Other error codes now propagate
+  verbatim.
+- **`install --remote --embed` and `install --remote --db-path` warn.**
+  Local-only flags passed in remote mode used to be silently
+  dropped post-validation. They now print a `warning:` line on
+  stderr so the user knows the flag did nothing.
+
+### Tests
+
+- 4 new specs in `test/cli/runCli-install.spec.ts` cover the
+  install-dispatch flag forwarding (`--embed mock` / `offline` /
+  `openai`, bogus rejection, `--db-path`, remote-mode warning).
+- 4 new specs in `test/local/query/find-symbol.spec.ts` cover the
+  LIKE-wildcard escape (bare `%`, bare `_`, literal `%` and `_` in
+  symbol names, literal `\`, combined `\\`/`%`/`_` in one input).
+- 7 new specs in `test/cli/local/shared.spec.ts` cover realpath
+  canonicalization (real-vs-symlink, ENOENT fallback,
+  installer-vs-indexer agreement), `resolveProjectRoot` no-walk-up
+  (4 cases), and `buildEmbedder('offline')` sync probe.
+- 1 new spec in `test/cli/local/reindex-cmd.spec.ts` writes a
+  sentinel string to the DB, makes `buildEmbedder` throw, and
+  asserts the file is byte-identical after the failed reindex.
+
+### Verification
+
+```
+npm run typecheck       exit 0
+npm test                462 passed (was 457), 0 failed
+npm run test:ts         all real-tree-sitter suites pass
+```
+
 ## 0.5.0 — 2026-04-29
 
 Closes the three deferred items from the 0.4.0 evaluation report

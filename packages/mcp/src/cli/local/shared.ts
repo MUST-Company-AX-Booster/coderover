@@ -52,10 +52,19 @@ const ROOT_MARKERS: string[] = [
 ];
 
 /**
- * Walk up from `inputPath` (or cwd) looking for a project-root marker.
- * Falls back to the input path itself — the user is usually running
- * from inside the repo anyway, and a stable "this directory is my
- * repo" signal avoids surprises when someone points us at a subtree.
+ * Resolve the project root.
+ *
+ * - **Explicit `inputPath`**: trust the user. Return the path itself
+ *   (or its parent if it's a file). We do NOT walk up — pre-0.5.1
+ *   `index ./my-repo` could silently index a parent dir if any
+ *   ancestor had a `package.json`/`.git`/etc., which is a footgun
+ *   especially in monorepos and quick-test directories.
+ * - **No `inputPath`**: walk up from cwd looking for a project-root
+ *   marker. This is the "find the project I'm in" path and is the
+ *   only place ancestor walk-up makes sense.
+ *
+ * In both cases the input is canonicalized via `path.resolve`. Falls
+ * back to the resolved input if the path doesn't exist on disk yet.
  */
 export function resolveProjectRoot(inputPath: string | undefined): string {
   const start = path.resolve(inputPath ?? process.cwd());
@@ -64,7 +73,7 @@ export function resolveProjectRoot(inputPath: string | undefined): string {
   // a clear error when it tries to walk the tree.
   if (!fs.existsSync(start)) return start;
 
-  // If the input is a file, begin the search from its parent directory.
+  // If the input is a file, treat its parent directory as the root.
   let cur = start;
   try {
     const stat = fs.statSync(start);
@@ -75,6 +84,10 @@ export function resolveProjectRoot(inputPath: string | undefined): string {
     // ignore — we already checked existence above, but a race is possible.
   }
 
+  // Explicit path → trust it. Do not walk up.
+  if (inputPath !== undefined) return cur;
+
+  // No-arg case: walk up from cwd looking for a manifest marker.
   for (let i = 0; i < 64; i++) {
     for (const marker of ROOT_MARKERS) {
       if (fs.existsSync(path.join(cur, marker))) {
@@ -89,17 +102,53 @@ export function resolveProjectRoot(inputPath: string | undefined): string {
 }
 
 /**
+ * Canonicalize a filesystem path through `realpath` so symlinks collapse
+ * onto their target. Used as the input to the DB-path SHA so that
+ * `/tmp/foo` and `/private/tmp/foo` (macOS) — or container bind-mount
+ * pairs on Linux — hash to the same `<sha>.db`. Falls back to
+ * `path.resolve` when the path doesn't exist yet (the common case
+ * during install/dry-run).
+ *
+ * Exported so `cli/install.ts::defaultDbPath` reuses the same helper —
+ * the installer config and the index/watch runtime MUST resolve to the
+ * same on-disk DB file. Pre-0.5.1 the two helpers duplicated this
+ * logic; a prior drift (12 vs 16 hex chars) had already caused a real
+ * bug, so consolidating eliminates that drift class entirely.
+ */
+export function canonicalizeForHash(p: string): string {
+  const resolved = path.resolve(p);
+  try {
+    return fs.realpathSync.native(resolved);
+  } catch (err) {
+    // ENOENT is the only legitimate fallback case (install / dry-run on
+    // a path that doesn't exist on disk yet). Other errors — EACCES on
+    // a mid-tree permission flip, ELOOP on a symlink cycle, ENAMETOOLONG —
+    // would silently split the user's index across two `<sha>.db` files
+    // (one canonicalized, one not) if we swallowed them. Let those propagate.
+    const code = (err as NodeJS.ErrnoException | undefined)?.code;
+    if (code !== 'ENOENT') {
+      throw err;
+    }
+    return resolved;
+  }
+}
+
+/**
  * Resolve the on-disk path for the SQLite DB corresponding to
  * `projectRoot`. Lives under `~/.coderover/` — the same directory the
  * installer places its config under.
  *
  * Hash collisions are effectively impossible at the expected scale
  * (hundreds of projects per user at most) with 16 hex chars of SHA256.
+ *
+ * The input is canonicalized via realpath before hashing — see
+ * {@link canonicalizeForHash} — so symlinked alternative paths to the
+ * same physical directory share one DB.
  */
 export function resolveDbPath(projectRoot: string): string {
   const sha = crypto
     .createHash('sha256')
-    .update(path.resolve(projectRoot))
+    .update(canonicalizeForHash(projectRoot))
     .digest('hex')
     .slice(0, 16);
   const home = os.homedir();
@@ -143,6 +192,36 @@ export function buildEmbedder(mode?: EmbedMode): Embedder {
   }
 
   if (resolved === 'offline') {
+    // Probe the companion package synchronously so reindex / index can
+    // fail BEFORE touching disk if the user typoed `--embed offline`
+    // without `@coderover/mcp-offline` installed. The OfflineEmbedder
+    // itself only requires `@xenova/transformers` lazily on first
+    // .embed() call, which is too late for the pre-flight check in
+    // reindex (post-unlink).
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require.resolve('@xenova/transformers');
+    } catch (err) {
+      // Only convert MODULE_NOT_FOUND into the install hint. Other
+      // errors (EACCES on a corrupted node_modules, malformed
+      // package.json, ERR_PACKAGE_PATH_NOT_EXPORTED) get rethrown
+      // verbatim so the user isn't sent down the wrong remediation.
+      const code = (err as NodeJS.ErrnoException | undefined)?.code;
+      if (code !== 'MODULE_NOT_FOUND') {
+        throw err;
+      }
+      const orig = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        'CODEROVER_EMBED_MODE=offline requires the companion package ' +
+          '@coderover/mcp-offline, which bundles @xenova/transformers.\n\n' +
+          '  npm install @coderover/mcp-offline\n\n' +
+          'Previously this was an `optionalDependencies` of @coderover/mcp, ' +
+          'but the 45 MB ONNX runtime it pulled in (plus a 5-CVE transitive ' +
+          'chain via protobufjs) was unwanted weight on every install. The ' +
+          'split lets remote-mode and openai-embed users skip it entirely.\n\n' +
+          `Original error: ${orig}`,
+      );
+    }
     return new OfflineEmbedder();
   }
 

@@ -18,6 +18,7 @@ import type { AgentAdapter, AgentId } from '../installer/types';
 import { makeAdapter, isAgentId, AGENT_IDS } from '../installer/agents';
 import { buildLocalEntry, buildRemoteEntry } from '../installer/agents/base';
 import { sweepOrphans } from '../installer/atomic-write';
+import { canonicalizeForHash } from './local/shared';
 import { askLine, askYesNo, type PromptIo } from './prompt';
 import type { HttpClient } from '../transport/http-client';
 
@@ -284,19 +285,22 @@ async function streamIngest(args: {
 /**
  * Deterministic default DB path for a given project root.
  *
- * We hash the absolute project root with sha256 and take the first 12 hex
- * chars. That's cross-process-stable (the same repo always resolves to the
- * same file) yet prefix-collision-safe enough for the ~few dozen indices
- * we'd ever see on a single machine.
+ * Hashes the realpath-canonicalized project root with sha256 and takes
+ * the first 16 hex chars. Cross-process-stable (the same repo always
+ * resolves to the same file) and prefix-collision-safe at the expected
+ * scale of hundreds of indices per user.
+ *
+ * MUST hash identically to `src/cli/local/shared.ts::resolveDbPath` —
+ * the installer config and the index/watch commands open the same file.
+ * Both helpers go through {@link canonicalizeForHash} for input
+ * canonicalization (the realpath collapses `/tmp/foo` and
+ * `/private/tmp/foo` to one DB) so this invariant can't drift.
  */
 export function defaultDbPath(projectRoot: string, homeDir?: string): string {
-  // Must match `src/cli/local/shared.ts::resolveDbPath` byte-for-byte —
-  // installer config points at the SAME file the index/watch commands open.
-  // 16 hex chars (not 12) — reconciled to the canonical shared helper.
   const home = homeDir ?? os.homedir();
   const hash = crypto
     .createHash('sha256')
-    .update(path.resolve(projectRoot))
+    .update(canonicalizeForHash(projectRoot))
     .digest('hex')
     .slice(0, 16);
   return path.join(home, '.coderover', `${hash}.db`);

@@ -89,6 +89,19 @@ export async function runReindexCmd(
   const projectRoot = _resolveProjectRoot(args.path);
   const dbPath = _resolveDbPath(projectRoot);
 
+  // Build the embedder FIRST. If the configured mode can't be loaded
+  // (e.g. --embed offline without the @coderover/mcp-offline companion),
+  // we want to bail out before touching disk — otherwise a typo or a
+  // missing companion destroys the user's existing index.
+  let embedder: Embedder;
+  try {
+    embedder = _buildEmbedder(args.embed);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    stderr.write(`[coderover reindex] ${msg}\n`);
+    return 1;
+  }
+
   // Nuke the DB file + the -wal / -shm siblings. Opening
   // better-sqlite3 with WAL leaves these sidecar files; if we don't
   // unlink them a subsequent open may see stale cache entries.
@@ -115,8 +128,6 @@ export async function runReindexCmd(
     return 1;
   }
   touchMeta(dbPath, projectRoot);
-
-  const embedder = _buildEmbedder(args.embed);
 
   try {
     const started = Date.now();

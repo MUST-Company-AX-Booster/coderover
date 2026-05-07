@@ -261,4 +261,184 @@ describe('findSymbol()', () => {
       db.close();
     }
   });
+
+  // Bug #3: prevent SQL LIKE-wildcard bypass. The 0.4.0 empty-string
+  // check closed the `find_symbol("")` loophole, but the bound LIKE
+  // values still treat `%` and `_` as wildcards — so `find_symbol("%")`
+  // matched every symbol in the index. The query must escape `%`/`_`
+  // (and the escape char itself) when binding LIKE patterns.
+  describe('LIKE-wildcard escape', () => {
+    function seedTwo(db: Database.Database): void {
+      seedSymbol(db, {
+        nodeId: 'n1',
+        chunkId: 'c1',
+        filePath: 'src/a.ts',
+        lineStart: 1,
+        lineEnd: 1,
+        kind: 'class',
+        name: 'AuthService',
+        qualified: 'AuthService',
+      });
+      seedSymbol(db, {
+        nodeId: 'n2',
+        chunkId: 'c2',
+        filePath: 'src/b.ts',
+        lineStart: 1,
+        lineEnd: 1,
+        kind: 'function',
+        name: 'verify',
+        qualified: 'AuthService.verify',
+      });
+    }
+
+    it('returns no results for a bare "%" wildcard query', async () => {
+      const db = await openSeededDb();
+      try {
+        seedTwo(db);
+        const res = findSymbol('%', { db });
+        expect(res.totalFound).toBe(0);
+        expect(res.results).toEqual([]);
+      } finally {
+        db.close();
+      }
+    });
+
+    it('returns no results for a bare "_" wildcard query', async () => {
+      const db = await openSeededDb();
+      try {
+        seedTwo(db);
+        const res = findSymbol('_', { db });
+        expect(res.totalFound).toBe(0);
+        expect(res.results).toEqual([]);
+      } finally {
+        db.close();
+      }
+    });
+
+    it('still matches a literal "%" in a symbol name when explicitly typed', async () => {
+      const db = await openSeededDb();
+      try {
+        seedSymbol(db, {
+          nodeId: 'n1',
+          chunkId: 'c1',
+          filePath: 'src/weird.ts',
+          lineStart: 1,
+          lineEnd: 1,
+          kind: 'function',
+          name: 'odd%name',
+          qualified: 'odd%name',
+        });
+        const res = findSymbol('odd%name', { db });
+        expect(res.totalFound).toBe(1);
+        expect(res.results[0].filePath).toBe('src/weird.ts');
+      } finally {
+        db.close();
+      }
+    });
+
+    it('does not let "Auth%" sneak through as a prefix wildcard', async () => {
+      const db = await openSeededDb();
+      try {
+        seedTwo(db);
+        // `Auth%` should be treated literally — neither symbol's name
+        // nor qualified is `Auth%`, so no match.
+        const res = findSymbol('Auth%', { db });
+        expect(res.totalFound).toBe(0);
+      } finally {
+        db.close();
+      }
+    });
+
+    it('still matches a literal "_" in a symbol name (not as wildcard)', async () => {
+      const db = await openSeededDb();
+      try {
+        // `_` is the SQL "any single char" wildcard. Pre-fix
+        // `findSymbol("foo_bar")` matched both `foo_bar` and `fooXbar`.
+        // Post-fix only the literal-underscore row matches.
+        seedSymbol(db, {
+          nodeId: 'n1',
+          chunkId: 'c1',
+          filePath: 'src/snake.ts',
+          lineStart: 1,
+          lineEnd: 1,
+          kind: 'function',
+          name: 'foo_bar',
+          qualified: 'foo_bar',
+        });
+        seedSymbol(db, {
+          nodeId: 'n2',
+          chunkId: 'c2',
+          filePath: 'src/x.ts',
+          lineStart: 1,
+          lineEnd: 1,
+          kind: 'function',
+          name: 'fooXbar',
+          qualified: 'fooXbar',
+        });
+        const res = findSymbol('foo_bar', { db });
+        expect(res.totalFound).toBe(1);
+        expect(res.results[0].filePath).toBe('src/snake.ts');
+      } finally {
+        db.close();
+      }
+    });
+
+    it('handles a literal backslash without mangling subsequent escapes', async () => {
+      // escapeLikePattern does \\ → \\\\ FIRST so subsequent %→\\% and
+      // _→\\_ passes don't double-escape. A regression that reordered
+      // the chain would silently break literal-backslash queries.
+      const db = await openSeededDb();
+      try {
+        seedSymbol(db, {
+          nodeId: 'n1',
+          chunkId: 'c1',
+          filePath: 'src/path.ts',
+          lineStart: 1,
+          lineEnd: 1,
+          kind: 'function',
+          name: 'win\\path',
+          qualified: 'win\\path',
+        });
+        const res = findSymbol('win\\path', { db });
+        expect(res.totalFound).toBe(1);
+        expect(res.results[0].filePath).toBe('src/path.ts');
+      } finally {
+        db.close();
+      }
+    });
+
+    it('handles a string with all three metachars (\\, %, _)', async () => {
+      // The combined-input case — locks the .replace() chain order.
+      // If `%` or `_` were escaped before `\`, the escape-prefix the
+      // first pass injected would itself be re-escaped on the next pass.
+      const db = await openSeededDb();
+      try {
+        seedSymbol(db, {
+          nodeId: 'n1',
+          chunkId: 'c1',
+          filePath: 'src/funky.ts',
+          lineStart: 1,
+          lineEnd: 1,
+          kind: 'function',
+          name: 'a\\b%c_d',
+          qualified: 'a\\b%c_d',
+        });
+        seedSymbol(db, {
+          nodeId: 'n2',
+          chunkId: 'c2',
+          filePath: 'src/other.ts',
+          lineStart: 1,
+          lineEnd: 1,
+          kind: 'function',
+          name: 'aXbYcZd',
+          qualified: 'aXbYcZd',
+        });
+        const res = findSymbol('a\\b%c_d', { db });
+        expect(res.totalFound).toBe(1);
+        expect(res.results[0].filePath).toBe('src/funky.ts');
+      } finally {
+        db.close();
+      }
+    });
+  });
 });
